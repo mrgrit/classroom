@@ -1,0 +1,21 @@
+{
+  "name": "classroom-kahoot",
+  "version": "1.0.0",
+  "description": "카훗(Kahoot!) 클론 — 실시간 퀴즈 게임, 구글 로그인으로 학생 식별",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js",
+    "dev": "node --watch server.js",
+    "tunnel": "bash tunnel.sh"
+  },
+  "license": "MIT",
+  "dependencies": {
+    "better-sqlite3": "^11.5.0",
+    "cookie-parser": "^1.4.7",
+    "dotenv": "^16.4.5",
+    "express": "^4.21.1",
+    "google-auth-library": "^9.14.2",
+    "jsonwebtoken": "^9.0.2",
+    "ws": "^8.18.0"
+  }
+}

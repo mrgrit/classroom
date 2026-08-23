@@ -10,3 +10,8 @@ padlet/data/*.db-wal
 padlet/data/*.db-shm
 padlet/data/tunnel-url.txt
 padlet/data/uploads/
+kahoot/data/*.db
+kahoot/data/*.db-journal
+kahoot/data/*.db-wal
+kahoot/data/*.db-shm
+kahoot/data/tunnel-url.txt
