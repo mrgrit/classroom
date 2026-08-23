@@ -11,6 +11,7 @@ const {
 } = require('./src/auth');
 
 const app = express();
+app.set('trust proxy', 1); // Cloudflare Tunnel 등 리버스 프록시 뒤에서 https 인식
 app.use(express.json());
 app.use(cookieParser());
 app.use(express.static(path.join(__dirname, 'public')));

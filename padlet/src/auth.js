@@ -47,6 +47,7 @@ function issueSessionCookie(res, user) {
   res.cookie('session', token, {
     httpOnly: true,
     sameSite: 'lax',
+    secure: res.req.secure,
     maxAge: 7 * 24 * 60 * 60 * 1000,
   });
 }

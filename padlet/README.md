@@ -33,6 +33,37 @@ npm start
 4. 생성된 클라이언트 ID를 `.env`의 `GOOGLE_CLIENT_ID`에 입력
 5. (처음이라면) OAuth 동의 화면 구성 필요 — 테스트 모드면 테스트 사용자에 학생 계정 추가, 또는 게시 상태로 전환
 
+## 외부 공개 (Cloudflare Tunnel, 도메인 불필요)
+
+구글 OAuth는 IP 주소 원본을 허용하지 않고 localhost 외에는 HTTPS가 필요합니다. 도메인 없이 쓰려면 Cloudflare Quick Tunnel로 `https://xxxx.trycloudflare.com` 주소를 받으면 됩니다 (무료, 계정 불필요).
+
+```bash
+# 1) cloudflared 설치 (sudo 없이 ~/.local/bin)
+curl -fsSL -o ~/.local/bin/cloudflared \
+  https://github.com/cloudflare/cloudflared/releases/latest/download/cloudflared-linux-amd64
+chmod +x ~/.local/bin/cloudflared
+
+# 2) 앱 + 터널을 systemd 유저 서비스로 등록 (재부팅/로그아웃 후에도 유지)
+./deploy/install-services.sh
+
+# 3) 공개 주소 확인 → Google Cloud Console '승인된 자바스크립트 원본'에 등록
+cat data/tunnel-url.txt
+```
+
+운영 명령:
+
+```bash
+systemctl --user status padlet padlet-tunnel    # 상태
+journalctl --user -u padlet -f                  # 앱 로그
+journalctl --user -u padlet-tunnel -f           # 터널 로그
+systemctl --user restart padlet                 # 앱만 재시작 (터널 URL 유지)
+systemctl --user restart padlet-tunnel          # 터널 재시작 → URL 바뀜! 구글 콘솔 갱신 필요
+```
+
+서비스 없이 잠깐 띄울 때는 `npm start` 와 별도 터미널에서 `npm run tunnel`.
+
+> **주의**: Quick Tunnel 주소는 터널 프로세스를 재시작할 때마다 바뀝니다. 앱 코드만 바꿨을 땐 `padlet` 서비스만 재시작하세요. 고정 주소가 필요해지면 도메인을 하나 사서 Cloudflare 계정에 연결한 뒤 Named Tunnel로 전환하면 됩니다.
+
 ## 환경 변수 (.env)
 
 | 변수 | 설명 |

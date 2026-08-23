@@ -8,3 +8,4 @@ padlet/data/*.db
 padlet/data/*.db-journal
 padlet/data/*.db-wal
 padlet/data/*.db-shm
+padlet/data/tunnel-url.txt
