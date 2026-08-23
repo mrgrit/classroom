@@ -44,6 +44,7 @@ CREATE TABLE IF NOT EXISTS posts (
   title       TEXT NOT NULL DEFAULT '',
   content     TEXT NOT NULL,
   color       TEXT NOT NULL DEFAULT 'yellow',
+  position    INTEGER NOT NULL DEFAULT 0,
   created_at  TEXT NOT NULL DEFAULT (datetime('now'))
 );
 
@@ -109,6 +110,18 @@ const migrate = db.transaction(() => {
 });
 migrate();
 db.exec('CREATE INDEX IF NOT EXISTS idx_posts_column ON posts(column_id)');
+
+// 게시물 순서(드래그 정렬) 기능 이전 DB: posts.position 추가 후 기존 순서(최신순) 그대로 번호 매김
+if (!postCols.includes('position')) {
+  db.exec('ALTER TABLE posts ADD COLUMN position INTEGER NOT NULL DEFAULT 0');
+  db.exec(`
+    UPDATE posts SET position = (
+      SELECT COUNT(*) FROM posts p2
+      WHERE p2.column_id = posts.column_id
+        AND (p2.created_at > posts.created_at OR (p2.created_at = posts.created_at AND p2.id > posts.id))
+    )
+  `);
+}
 
 module.exports = db;
 module.exports.DEFAULT_COLUMN_TITLE = DEFAULT_COLUMN_TITLE;

@@ -117,7 +117,7 @@ app.get('/api/boards/:id', requireAuth, (req, res) => {
               (SELECT COUNT(*) FROM likes l WHERE l.post_id = p.id) AS like_count,
               EXISTS(SELECT 1 FROM likes l WHERE l.post_id = p.id AND l.user_id = ?) AS liked_by_me
        FROM posts p JOIN users u ON u.id = p.user_id
-       WHERE p.board_id = ? ORDER BY p.created_at DESC`
+       WHERE p.board_id = ? ORDER BY p.position, p.created_at DESC, p.id DESC`
     )
     .all(req.user.uid, req.params.id);
 
@@ -202,6 +202,12 @@ function resolveColumn(boardId, columnId) {
   return first ? first.id : null;
 }
 
+// 컬럼 맨 위에 올 position 값 (새 게시물·컬럼 이동 시 최상단 배치)
+function topPosition(columnId) {
+  const row = db.prepare('SELECT COALESCE(MIN(position), 1) AS m FROM posts WHERE column_id = ?').get(columnId);
+  return row.m - 1;
+}
+
 app.post('/api/boards/:id/posts', requireAuth, (req, res) => {
   const board = db.prepare('SELECT id FROM boards WHERE id = ?').get(req.params.id);
   if (!board) return res.status(404).json({ error: '보드가 없습니다.' });
@@ -218,8 +224,8 @@ app.post('/api/boards/:id/posts', requireAuth, (req, res) => {
   const color = POST_COLORS.includes(req.body.color) ? req.body.color : 'yellow';
 
   const info = db
-    .prepare('INSERT INTO posts (board_id, column_id, user_id, title, content, color) VALUES (?, ?, ?, ?, ?, ?)')
-    .run(req.params.id, columnId, req.user.uid, title, content, color);
+    .prepare('INSERT INTO posts (board_id, column_id, user_id, title, content, color, position) VALUES (?, ?, ?, ?, ?, ?, ?)')
+    .run(req.params.id, columnId, req.user.uid, title, content, color, topPosition(columnId));
   const attached = uploads.claim('post', info.lastInsertRowid, attachmentIds, req.user.uid);
   if (!content && !attached) {
     db.prepare('DELETE FROM posts WHERE id = ?').run(info.lastInsertRowid);
@@ -250,9 +256,33 @@ app.put('/api/posts/:id', requireAuth, (req, res) => {
   }
   if (req.body.title !== undefined) title = String(req.body.title).trim().slice(0, 100);
 
-  db.prepare('UPDATE posts SET title = ?, content = ?, column_id = ? WHERE id = ?').run(
-    title, content, columnId, req.params.id
+  const position = columnId !== post.column_id ? topPosition(columnId) : post.position;
+  db.prepare('UPDATE posts SET title = ?, content = ?, column_id = ?, position = ? WHERE id = ?').run(
+    title, content, columnId, position, req.params.id
   );
+  res.json({ ok: true });
+});
+
+// 드래그 이동: {column_id, index} → 해당 컬럼의 index 번째(0부터) 위치로. 같은 컬럼이면 순서만 변경
+app.put('/api/posts/:id/move', requireAuth, (req, res) => {
+  const post = db.prepare('SELECT * FROM posts WHERE id = ?').get(req.params.id);
+  if (!post) return res.status(404).json({ error: '게시물이 없습니다.' });
+  if (post.user_id !== req.user.uid && !req.user.admin)
+    return res.status(403).json({ error: '본인 게시물만 이동할 수 있습니다.' });
+
+  const columnId = resolveColumn(post.board_id, req.body.column_id ?? post.column_id);
+  if (!columnId) return res.status(400).json({ error: '컬럼이 올바르지 않습니다.' });
+  const index = Number.isInteger(req.body.index) && req.body.index >= 0 ? req.body.index : 0;
+
+  db.transaction(() => {
+    const ids = db
+      .prepare('SELECT id FROM posts WHERE column_id = ? AND id != ? ORDER BY position, created_at DESC, id DESC')
+      .all(columnId, post.id)
+      .map((r) => r.id);
+    ids.splice(Math.min(index, ids.length), 0, post.id);
+    const update = db.prepare('UPDATE posts SET position = ?, column_id = ? WHERE id = ?');
+    ids.forEach((id, i) => update.run(i, columnId, id));
+  })();
   res.json({ ok: true });
 });
 

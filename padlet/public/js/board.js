@@ -34,6 +34,7 @@
   }
 
   function isTyping() {
+    if (drag) return true; // 드래그 중 재렌더링하면 드래그가 끊김
     const el = document.activeElement;
     return el && (el.tagName === 'TEXTAREA' || el.tagName === 'INPUT') && $columns.contains(el);
   }
@@ -61,10 +62,11 @@
       compose && compose.columnId === col.id
         ? composeHtml()
         : `<button class="col-add-post" data-col="${col.id}">＋ 게시물 올리기</button>`;
+    const colHandle = me.admin && total > 1 ? `<span class="drag-handle col-handle" title="끌어서 컬럼 순서 변경">⠿</span>` : '';
     return `
     <section class="column" data-col="${col.id}">
       <header class="column-head">
-        <h3>${escapeHtml(col.title)} <span class="col-count">${col.posts.length}</span></h3>
+        <h3>${colHandle}${escapeHtml(col.title)} <span class="col-count">${col.posts.length}</span></h3>
         ${adminTools}
       </header>
       ${composeArea}
@@ -138,7 +140,7 @@
     return `
     <article class="post-card color-${p.color}" data-id="${p.id}">
       <div class="post-head">
-        <span class="post-author">${escapeHtml(p.author_name)}</span>
+        <span class="post-author">${canEdit ? '<span class="drag-handle post-handle" title="끌어서 이동">⠿</span>' : ''}${escapeHtml(p.author_name)}</span>
         <span class="post-head-tools">
           ${moveSelect}
           ${canEdit ? `<button class="icon-btn post-delete" data-id="${p.id}" title="삭제">✕</button>` : ''}
@@ -399,19 +401,129 @@
     }
   });
 
-  // 드래그 앤 드롭 (작성 폼 위)
+  // ---------- 드래그 앤 드롭 ----------
+  // (1) 파일을 작성 폼 위에 떨어뜨리면 첨부
+  // (2) 게시물 손잡이(⠿)를 끌어 같은 컬럼 안에서 위아래로, 또는 다른 컬럼으로 이동
+  // (3) 컬럼 손잡이(⠿)를 끌어 컬럼 좌우 순서 변경 (관리자)
+
+  let drag = null; // { type: 'post'|'column', id, el, placeholder }
+
+  // 손잡이를 누르는 동안에만 draggable 활성화 (카드 안의 입력창 텍스트 선택을 방해하지 않기 위해)
+  $columns.addEventListener('mousedown', (e) => {
+    const handle = e.target.closest('.drag-handle');
+    if (!handle) return;
+    const el = handle.closest(handle.classList.contains('col-handle') ? '.column' : '.post-card[data-id]');
+    if (el) el.setAttribute('draggable', 'true');
+  });
+  document.addEventListener('mouseup', () => {
+    if (!drag) $columns.querySelectorAll('[draggable]').forEach((el) => el.removeAttribute('draggable'));
+  });
+
+  $columns.addEventListener('dragstart', (e) => {
+    const el = e.target.closest && e.target.closest('[draggable="true"]');
+    if (!el) return;
+    const isColumn = el.classList.contains('column');
+    const placeholder = document.createElement('div');
+    placeholder.className = isColumn ? 'column drop-placeholder-col' : 'drop-placeholder';
+    if (!isColumn) placeholder.style.height = `${el.offsetHeight}px`;
+    drag = { type: isColumn ? 'column' : 'post', id: Number(isColumn ? el.dataset.col : el.dataset.id), el, placeholder };
+    e.dataTransfer.effectAllowed = 'move';
+    e.dataTransfer.setData('text/plain', String(drag.id)); // Firefox는 데이터가 있어야 드래그 시작
+    // 드래그 이미지가 잡힌 뒤에 원본을 숨기고 자리 표시
+    setTimeout(() => {
+      if (!drag) return;
+      el.parentNode.insertBefore(placeholder, el);
+      el.classList.add('drag-source');
+    }, 0);
+  });
+
+  // 포인터 위치에 가장 가까운 요소와, 그 앞/뒤 중 어디에 넣을지 계산
+  function nearest(items, x, y, horizontal) {
+    let best = null;
+    for (const item of items) {
+      const r = item.getBoundingClientRect();
+      const dx = Math.max(r.left - x, 0, x - r.right);
+      const dy = Math.max(r.top - y, 0, y - r.bottom);
+      const d = dx * dx + dy * dy;
+      if (!best || d < best.d) best = { item, r, d };
+    }
+    if (!best) return null;
+    const after = horizontal ? x > (best.r.left + best.r.right) / 2 : y > (best.r.top + best.r.bottom) / 2;
+    return { item: best.item, after };
+  }
+
+  function placePostPlaceholder(column, x, y) {
+    const postsEl = column.querySelector('.column-posts');
+    const cards = [...postsEl.querySelectorAll(':scope > .post-card[data-id]')].filter((c) => c !== drag.el);
+    const n = nearest(cards, x, y, false);
+    const ref = skipDragNodes(n ? (n.after ? n.item.nextElementSibling : n.item) : postsEl.firstElementChild);
+    if (drag.placeholder.parentNode !== postsEl || drag.placeholder.nextElementSibling !== ref) {
+      postsEl.insertBefore(drag.placeholder, ref);
+    }
+    $columns.querySelectorAll('.column.drop-target').forEach((c) => c !== column && c.classList.remove('drop-target'));
+    column.classList.add('drop-target');
+  }
+
+  function placeColumnPlaceholder(x, y) {
+    const cols = [...$columns.querySelectorAll(':scope > .column')].filter((c) => c !== drag.el && c !== drag.placeholder);
+    const n = nearest(cols, x, y, true);
+    if (!n) return;
+    const ref = skipDragNodes(n.after ? n.item.nextElementSibling : n.item);
+    if (drag.placeholder.nextElementSibling !== ref) $columns.insertBefore(drag.placeholder, ref);
+  }
+
+  // 기준 요소가 드래그 중인 원본이나 자리표시자면 그 다음 요소로
+  function skipDragNodes(node) {
+    while (node && (node === drag.el || node === drag.placeholder)) node = node.nextElementSibling;
+    return node;
+  }
+
   $columns.addEventListener('dragover', (e) => {
+    if (drag) {
+      e.preventDefault();
+      e.dataTransfer.dropEffect = 'move';
+      if (drag.type === 'column') {
+        placeColumnPlaceholder(e.clientX, e.clientY);
+      } else {
+        const column = e.target.closest('.column');
+        if (column && column !== drag.placeholder) placePostPlaceholder(column, e.clientX, e.clientY);
+      }
+      return;
+    }
     const form = e.target.closest('.compose-form, .comment-form');
     if (form) {
       e.preventDefault();
       form.classList.add('dragging');
     }
   });
+
   $columns.addEventListener('dragleave', (e) => {
+    if (drag) return;
     const form = e.target.closest('.compose-form, .comment-form');
     if (form) form.classList.remove('dragging');
   });
-  $columns.addEventListener('drop', (e) => {
+
+  $columns.addEventListener('drop', async (e) => {
+    if (drag) {
+      e.preventDefault();
+      const { type, id, el, placeholder } = drag;
+      if (!placeholder.parentNode) return;
+      // 화면 먼저 갱신(낙관적), 그 다음 서버 반영
+      placeholder.parentNode.insertBefore(el, placeholder);
+      el.classList.remove('drag-source');
+      if (type === 'post') {
+        const column = el.closest('.column');
+        const columnId = Number(column.dataset.col);
+        const index = [...column.querySelectorAll('.column-posts > .post-card[data-id]')].indexOf(el);
+        cleanupDrag();
+        await run(() => api(`/api/posts/${id}/move`, { method: 'PUT', body: JSON.stringify({ column_id: columnId, index }) }));
+      } else {
+        const ids = [...$columns.querySelectorAll(':scope > .column[data-col]')].map((c) => Number(c.dataset.col));
+        cleanupDrag();
+        await run(() => api(`/api/boards/${boardId}/columns/order`, { method: 'PUT', body: JSON.stringify({ ids }) }));
+      }
+      return;
+    }
     const form = e.target.closest('.compose-form, .comment-form');
     if (!form) return;
     e.preventDefault();
@@ -421,6 +533,21 @@
     if (form.classList.contains('compose-form')) addFiles(files, compose, 'compose');
     else addFiles(files, getDraft(form.dataset.postId), 'comment', form.dataset.postId);
   });
+
+  // 드롭 없이 끝난 경우(ESC, 밖에 놓음) 원상 복구
+  $columns.addEventListener('dragend', () => {
+    if (!drag) return;
+    drag.el.classList.remove('drag-source');
+    cleanupDrag();
+  });
+
+  function cleanupDrag() {
+    if (!drag) return;
+    drag.placeholder.remove();
+    drag.el.removeAttribute('draggable');
+    $columns.querySelectorAll('.column.drop-target').forEach((c) => c.classList.remove('drop-target'));
+    drag = null;
+  }
 
   // API 호출 후 화면 갱신. 실패 시 alert. 성공 여부 반환
   async function run(fn, reload = true) {

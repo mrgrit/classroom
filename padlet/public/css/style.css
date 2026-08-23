@@ -217,6 +217,35 @@ body {
 .board-columns.single .post-card { break-inside: avoid; }
 .board-columns.single .col-add-post { max-width: 400px; }
 
+/* ---------- 드래그 앤 드롭 ---------- */
+.drag-handle {
+  cursor: grab;
+  color: var(--text-dim);
+  opacity: 0.55;
+  margin-right: 6px;
+  user-select: none;
+  font-size: 14px;
+  line-height: 1;
+}
+.drag-handle:hover { opacity: 1; color: var(--primary); }
+.drag-handle:active { cursor: grabbing; }
+.post-handle { display: inline-block; vertical-align: middle; }
+.drag-source { display: none !important; }
+.drop-placeholder {
+  border: 2px dashed var(--primary);
+  border-radius: var(--radius);
+  background: rgba(233, 30, 99, 0.08);
+  margin-bottom: 12px;
+  min-height: 48px;
+  break-inside: avoid;
+}
+.drop-placeholder-col {
+  border: 2px dashed var(--primary);
+  background: rgba(233, 30, 99, 0.06);
+  min-height: 200px;
+}
+.column.drop-target { background: rgba(233, 30, 99, 0.08); }
+
 /* ---------- 게시물 카드 ---------- */
 .post-card {
   margin-bottom: 12px;
