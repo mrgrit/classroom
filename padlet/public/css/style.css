@@ -385,3 +385,20 @@ body {
   .column { scroll-snap-align: start; }
   .board-columns.single .column-posts { columns: 1; }
 }
+
+/* ---------- 이미지 크게 보기 ---------- */
+.att-images img { cursor: zoom-in; }
+.no-scroll { overflow: hidden; }
+.lightbox { position: fixed; inset: 0; background: rgba(0, 0, 0, 0.88); z-index: 100; display: none; align-items: center; justify-content: center; }
+.lightbox.open { display: flex; }
+.lightbox img { max-width: 94vw; max-height: 86vh; object-fit: contain; border-radius: 4px; box-shadow: 0 4px 30px rgba(0, 0, 0, 0.6); cursor: zoom-out; }
+.lightbox button { position: absolute; background: rgba(255, 255, 255, 0.12); color: #fff; border: none; cursor: pointer; border-radius: 50%; width: 44px; height: 44px; font-size: 26px; line-height: 1; display: flex; align-items: center; justify-content: center; }
+.lightbox button:hover { background: rgba(255, 255, 255, 0.28); }
+.lb-close { top: 14px; right: 14px; font-size: 20px !important; }
+.lb-prev, .lb-next { top: 50%; transform: translateY(-50%); display: none !important; }
+.lightbox.multi .lb-prev, .lightbox.multi .lb-next { display: flex !important; }
+.lb-prev { left: 14px; }
+.lb-next { right: 14px; }
+.lb-caption { position: absolute; bottom: 14px; left: 0; right: 0; text-align: center; color: #ddd; font-size: 13px; }
+.lb-caption a { color: #fff; margin-left: 8px; text-decoration: underline; }
+@media (max-width: 600px) { .lightbox img { max-width: 100vw; max-height: 80vh; } .lb-prev { left: 4px; } .lb-next { right: 4px; } }

@@ -124,7 +124,7 @@
     const files = list.filter((a) => !a.is_image);
     return `
       ${images.length ? `<div class="att-images ${small ? 'small' : ''}">${images
-        .map((a) => `<a href="${a.url}" target="_blank" rel="noopener"><img src="${a.url}" alt="${escapeHtml(a.name)}" loading="lazy"></a>`)
+        .map((a) => `<a href="${a.url}" class="att-img" data-name="${escapeHtml(a.name)}"><img src="${a.url}" alt="${escapeHtml(a.name)}" loading="lazy"></a>`)
         .join('')}</div>` : ''}
       ${files.length ? `<div class="att-files">${files
         .map((a) => `<a class="att-file" href="${a.url}" target="_blank" rel="noopener">📄 ${escapeHtml(a.name)} <span class="att-size">${fmtSize(a.size)}</span></a>`)
@@ -590,6 +590,60 @@
     drag.el.removeAttribute('draggable');
     $columns.querySelectorAll('.column.drop-target').forEach((c) => c.classList.remove('drop-target'));
     drag = null;
+  }
+
+  // ---------- 이미지 크게 보기 (라이트박스) ----------
+  // 게시물/댓글의 이미지 첨부를 클릭하면 페이지 안에서 크게 표시. 같은 묶음 안에서 ←→ 로 이동
+  const lightbox = { items: [], index: 0, el: null };
+  $columns.addEventListener('click', (e) => {
+    const link = e.target.closest('a.att-img');
+    if (!link) return;
+    e.preventDefault();
+    lightbox.items = [...link.parentElement.querySelectorAll('a.att-img')].map((a) => ({ url: a.getAttribute('href'), name: a.dataset.name }));
+    lightbox.index = lightbox.items.findIndex((it) => it.url === link.getAttribute('href'));
+    openLightbox();
+  });
+
+  function openLightbox() {
+    if (!lightbox.el) {
+      lightbox.el = document.createElement('div');
+      lightbox.el.className = 'lightbox';
+      lightbox.el.innerHTML = `
+        <button class="lb-close" title="닫기 (Esc)">✕</button>
+        <button class="lb-prev" title="이전 (←)">‹</button>
+        <img alt="">
+        <button class="lb-next" title="다음 (→)">›</button>
+        <div class="lb-caption"><span class="lb-name"></span> <a class="lb-open" target="_blank" rel="noopener">원본 열기</a></div>`;
+      document.body.appendChild(lightbox.el);
+      lightbox.el.addEventListener('click', (e) => {
+        if (e.target.closest('.lb-prev')) return showLightbox(lightbox.index - 1);
+        if (e.target.closest('.lb-next')) return showLightbox(lightbox.index + 1);
+        if (e.target.closest('.lb-open')) return;
+        closeLightbox();
+      });
+      document.addEventListener('keydown', (e) => {
+        if (!lightbox.el.classList.contains('open')) return;
+        if (e.key === 'Escape') closeLightbox();
+        else if (e.key === 'ArrowLeft') showLightbox(lightbox.index - 1);
+        else if (e.key === 'ArrowRight') showLightbox(lightbox.index + 1);
+      });
+    }
+    lightbox.el.classList.add('open');
+    document.body.classList.add('no-scroll');
+    showLightbox(lightbox.index);
+  }
+  function showLightbox(i) {
+    const n = lightbox.items.length;
+    lightbox.index = ((i % n) + n) % n;
+    const it = lightbox.items[lightbox.index];
+    lightbox.el.querySelector('img').src = it.url;
+    lightbox.el.querySelector('.lb-name').textContent = n > 1 ? `${it.name} (${lightbox.index + 1}/${n})` : it.name;
+    lightbox.el.querySelector('.lb-open').href = it.url;
+    lightbox.el.classList.toggle('multi', n > 1);
+  }
+  function closeLightbox() {
+    lightbox.el.classList.remove('open');
+    document.body.classList.remove('no-scroll');
   }
 
   // API 호출 후 화면 갱신. 실패 시 alert. 성공 여부 반환
