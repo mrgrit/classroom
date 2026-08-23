@@ -217,6 +217,10 @@ body {
 .board-columns.single .post-card { break-inside: avoid; }
 .board-columns.single .col-add-post { max-width: 400px; }
 
+/* 게시물 수정 폼 */
+.edit-label { font-size: 12px; font-weight: 700; color: var(--text-dim); margin-bottom: 6px; }
+.compose-form[data-id] { outline: 2px solid var(--primary); }
+
 /* ---------- 드래그 앤 드롭 ---------- */
 .drag-handle {
   cursor: grab;

@@ -106,7 +106,8 @@ function serveFile(req, res) {
 // 업로드된(아직 주인 없는, 본인이 올린) 첨부를 게시물/댓글에 연결. 연결된 개수 반환
 function claim(ownerType, ownerId, ids, userId) {
   const max = ownerType === 'post' ? MAX_FILES_PER_POST : MAX_FILES_PER_COMMENT;
-  const list = (Array.isArray(ids) ? ids : []).map(Number).filter(Number.isInteger).slice(0, max);
+  const existing = countFor(ownerType, ownerId);
+  const list = (Array.isArray(ids) ? ids : []).map(Number).filter(Number.isInteger).slice(0, Math.max(0, max - existing));
   if (!list.length) return 0;
   const stmt = db.prepare(
     `UPDATE attachments SET owner_type = ?, owner_id = ?
@@ -115,6 +116,29 @@ function claim(ownerType, ownerId, ids, userId) {
   let n = 0;
   for (const id of list) n += stmt.run(ownerType, ownerId, id, userId).changes;
   return n;
+}
+
+function countFor(ownerType, ownerId) {
+  return db.prepare('SELECT COUNT(*) AS c FROM attachments WHERE owner_type = ? AND owner_id = ?').get(ownerType, ownerId).c;
+}
+
+// 아직 주인 없는 본인 첨부 중 실제로 연결 가능한 id 개수 (수정 시 사전 검증용)
+function countClaimable(ids, userId) {
+  const list = (Array.isArray(ids) ? ids : []).map(Number).filter(Number.isInteger);
+  if (!list.length) return 0;
+  const stmt = db.prepare('SELECT 1 FROM attachments WHERE id = ? AND user_id = ? AND owner_type IS NULL');
+  return list.filter((id) => stmt.get(id, userId)).length;
+}
+
+// 게시물에서 특정 첨부만 제거 (파일도 삭제)
+function removeFromPost(postId, ids) {
+  const list = (Array.isArray(ids) ? ids : []).map(Number).filter(Number.isInteger);
+  if (!list.length) return;
+  const ph = list.map(() => '?').join(',');
+  const rows = db
+    .prepare(`SELECT id, stored_name FROM attachments WHERE owner_type = 'post' AND owner_id = ? AND id IN (${ph})`)
+    .all(postId, ...list);
+  removeRows(rows);
 }
 
 // 게시물/댓글 목록에 attachments 배열을 붙임
@@ -172,4 +196,4 @@ function cleanupOrphans() {
 setInterval(cleanupOrphans, 30 * 60 * 1000).unref();
 cleanupOrphans();
 
-module.exports = { handleUpload, serveFile, claim, attachTo, deleteForPosts, deleteForComments };
+module.exports = { handleUpload, serveFile, claim, countFor, countClaimable, removeFromPost, attachTo, deleteForPosts, deleteForComments };

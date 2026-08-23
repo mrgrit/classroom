@@ -5,7 +5,7 @@
 - **구글 로그인**으로 학생 식별 (Google Identity Services + 서버 측 ID 토큰 검증)
 - **관리자**(기본: `mrgrit@ync.ac.kr`)만 보드(담벼락) 생성/삭제, 보드 안의 **컬럼**(섹션) 추가/이름 변경/순서 이동/삭제
 - **컬럼 레이아웃**: 패들렛 '셸프'처럼 보드 하나에 컬럼 여러 개(예: 1조/2조/3조), 컬럼이 1개면 전체폭 담벼락
-- **학생**: 컬럼별 게시물 작성(색상 선택), 본인 게시물 수정/삭제/컬럼 이동, 좋아요, 댓글
+- **학생**: 컬럼별 게시물 작성(색상 선택), 본인 게시물 **수정**(✎: 제목·내용·색상·첨부 추가/삭제, "수정됨" 표시)/삭제/컬럼 이동, 좋아요, 댓글
 - **드래그 앤 드롭**: 게시물의 ⠿ 손잡이를 끌어 같은 컬럼 안에서 위아래로, 또는 다른 컬럼으로 이동(본인 글, 관리자는 모두). 관리자는 컬럼 제목의 ⠿ 로 컬럼 좌우 순서 변경. 모바일(터치)에서는 드롭다운/◀▶ 버튼 사용
 - **파일 첨부**: 게시물(최대 5개)·댓글(최대 2개)에 파일 첨부 — **캡처한 이미지를 Ctrl+V로 바로 붙여넣기**, 드래그 앤 드롭, 📎 버튼. 이미지는 인라인 표시, 그 외(PDF/문서/zip)는 다운로드 링크. 파일당 10MB, 로그인 사용자만 열람 가능
 - **자체 DB**: SQLite 파일 하나 (`data/padlet.db`) — 외부 DB 서버 불필요
@@ -108,7 +108,7 @@ DELETE /api/columns/:id             컬럼 삭제, 게시물 포함 (관리자, 
 POST   /api/uploads                 파일 업로드 (multipart 'file') → {id,url,...}
 GET    /uploads/:name               첨부파일 열람 (로그인 필요)
 POST   /api/boards/:id/posts        게시물 작성 {column_id, content, attachment_ids}
-PUT    /api/posts/:id               게시물 수정/컬럼 이동 (본인/관리자)
+PUT    /api/posts/:id               게시물 수정 {title, content, color, attachment_ids(추가), remove_attachment_ids(삭제)} 또는 {column_id} 이동 (본인/관리자)
 PUT    /api/posts/:id/move          드래그 이동 {column_id, index} → 해당 컬럼의 index 위치로 (본인/관리자)
 DELETE /api/posts/:id               게시물 삭제 (본인/관리자)
 POST   /api/posts/:id/like          좋아요 토글

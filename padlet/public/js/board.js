@@ -4,7 +4,11 @@
   const COLORS = ['yellow', 'pink', 'blue', 'green', 'purple', 'orange'];
 
   const state = { board: null, columns: [], me: null };
-  let compose = null; // { columnId, title, content, color, files: [...] }
+  // 작성/수정 폼 상태. mode 'compose'(columnId에 새 글) 또는 'edit'(postId 게시물 수정)
+  // files: 업로드 결과 또는 기존 첨부(existing:true), removed: 수정 중 제거한 기존 첨부 id
+  let compose = null;
+  const isComposing = (colId) => compose && compose.mode === 'compose' && compose.columnId === colId;
+  const isEditing = (postId) => compose && compose.mode === 'edit' && compose.postId === postId;
   const commentDrafts = {}; // postId -> { text, files: [...] }
 
   const loggedIn = await Auth.init();
@@ -58,10 +62,9 @@
            <button class="icon-btn col-delete" data-id="${col.id}" title="컬럼 삭제" ${total <= 1 ? 'disabled' : ''}>✕</button>
          </span>`
       : '';
-    const composeArea =
-      compose && compose.columnId === col.id
-        ? composeHtml()
-        : `<button class="col-add-post" data-col="${col.id}">＋ 게시물 올리기</button>`;
+    const composeArea = isComposing(col.id)
+      ? composeHtml()
+      : `<button class="col-add-post" data-col="${col.id}">＋ 게시물 올리기</button>`;
     const colHandle = me.admin && total > 1 ? `<span class="drag-handle col-handle" title="끌어서 컬럼 순서 변경">⠿</span>` : '';
     return `
     <section class="column" data-col="${col.id}">
@@ -72,14 +75,16 @@
       ${composeArea}
       <div class="column-posts">
         ${col.posts.map((p) => postCard(p)).join('')}
-        ${col.posts.length === 0 && !(compose && compose.columnId === col.id) ? '<p class="col-empty">아직 게시물이 없습니다.</p>' : ''}
+        ${col.posts.length === 0 && !isComposing(col.id) ? '<p class="col-empty">아직 게시물이 없습니다.</p>' : ''}
       </div>
     </section>`;
   }
 
   function composeHtml() {
+    const edit = compose.mode === 'edit';
     return `
-    <form class="compose-form post-card color-${compose.color}">
+    <form class="compose-form post-card color-${compose.color}" ${edit ? `data-id="${compose.postId}"` : ''}>
+      ${edit ? '<div class="edit-label">✎ 게시물 수정</div>' : ''}
       <input type="text" class="compose-title" placeholder="제목 (선택)" maxlength="100" value="${escapeHtml(compose.title)}">
       <textarea class="compose-content" placeholder="내용을 입력하세요. 캡처한 이미지를 붙여넣거나(Ctrl+V) 파일을 끌어다 놓을 수 있습니다." rows="4" maxlength="2000">${escapeHtml(compose.content)}</textarea>
       <div class="chips compose-chips">${chipsHtml(compose.files, 'compose')}</div>
@@ -91,7 +96,7 @@
           <input type="file" class="compose-file hidden" multiple>
           <button type="button" class="btn btn-small compose-attach" title="파일 첨부">📎 파일</button>
           <button type="button" class="btn btn-small compose-cancel">취소</button>
-          <button type="submit" class="btn btn-small btn-primary">게시</button>
+          <button type="submit" class="btn btn-small btn-primary">${edit ? '저장' : '게시'}</button>
         </div>
       </div>
     </form>`;
@@ -127,9 +132,10 @@
   }
 
   function postCard(p) {
+    if (isEditing(p.id)) return composeHtml();
     const { me, columns } = state;
     const canEdit = p.is_mine || me.admin;
-    const time = fmtTime(p.created_at);
+    const time = fmtTime(p.created_at) + (p.edited_at ? ' (수정됨)' : '');
     const draft = commentDrafts[p.id] || { text: '', files: [] };
     const moveSelect =
       canEdit && columns.length > 1
@@ -143,7 +149,7 @@
         <span class="post-author">${canEdit ? '<span class="drag-handle post-handle" title="끌어서 이동">⠿</span>' : ''}${escapeHtml(p.author_name)}</span>
         <span class="post-head-tools">
           ${moveSelect}
-          ${canEdit ? `<button class="icon-btn post-delete" data-id="${p.id}" title="삭제">✕</button>` : ''}
+          ${canEdit ? `<button class="icon-btn post-edit" data-id="${p.id}" title="수정">✎</button><button class="icon-btn post-delete" data-id="${p.id}" title="삭제">✕</button>` : ''}
         </span>
       </div>
       ${p.title ? `<h4 class="post-title">${escapeHtml(p.title)}</h4>` : ''}
@@ -269,9 +275,21 @@
     if (!btn) return;
 
     if (btn.classList.contains('col-add-post')) {
-      compose = { columnId: Number(btn.dataset.col), title: '', content: '', color: 'yellow', files: [] };
+      compose = { mode: 'compose', columnId: Number(btn.dataset.col), title: '', content: '', color: 'yellow', files: [] };
       render();
       $columns.querySelector('.compose-content')?.focus();
+      return;
+    }
+    if (btn.classList.contains('post-edit')) {
+      const p = state.columns.flatMap((c) => c.posts).find((x) => x.id === Number(btn.dataset.id));
+      if (!p) return;
+      compose = {
+        mode: 'edit', postId: p.id, title: p.title, content: p.content, color: p.color,
+        files: p.attachments.map((a) => ({ ...a, existing: true })), removed: [],
+      };
+      render();
+      const ta = $columns.querySelector('.compose-content');
+      if (ta) { ta.focus(); ta.setSelectionRange(ta.value.length, ta.value.length); }
       return;
     }
     if (btn.classList.contains('compose-cancel')) {
@@ -293,7 +311,8 @@
     if (btn.classList.contains('chip-remove')) {
       const idx = Number(btn.dataset.idx);
       if (btn.dataset.scope === 'compose') {
-        compose.files.splice(idx, 1);
+        const [removed] = compose.files.splice(idx, 1);
+        if (removed && removed.existing) compose.removed.push(removed.id);
         refreshChips('compose');
       } else {
         getDraft(btn.dataset.postId).files.splice(idx, 1);
@@ -347,7 +366,22 @@
   $columns.addEventListener('submit', async (e) => {
     e.preventDefault();
     const form = e.target;
-    if (form.classList.contains('compose-form')) {
+    if (form.classList.contains('compose-form') && compose.mode === 'edit') {
+      if (compose.files.some((f) => f.uploading)) return alert('파일 업로드가 끝날 때까지 기다려주세요.');
+      const body = {
+        title: compose.title,
+        content: compose.content,
+        color: compose.color,
+        attachment_ids: compose.files.filter((f) => !f.existing).map((f) => f.id),
+        remove_attachment_ids: compose.removed,
+      };
+      if (!body.content.trim() && !compose.files.length) return alert('내용을 입력하거나 파일을 첨부하세요.');
+      const ok = await run(() => api(`/api/posts/${compose.postId}`, { method: 'PUT', body: JSON.stringify(body) }), false);
+      if (ok) {
+        compose = null;
+        await load(true);
+      }
+    } else if (form.classList.contains('compose-form')) {
       if (compose.files.some((f) => f.uploading)) return alert('파일 업로드가 끝날 때까지 기다려주세요.');
       const body = {
         column_id: compose.columnId,

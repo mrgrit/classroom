@@ -234,7 +234,7 @@ app.post('/api/boards/:id/posts', requireAuth, (req, res) => {
   res.status(201).json({ id: info.lastInsertRowid });
 });
 
-// 수정: 제목/내용 변경 또는 column_id만 보내서 다른 컬럼으로 이동
+// 수정: 제목/내용/색상 변경, 첨부 추가(attachment_ids)/삭제(remove_attachment_ids), 또는 column_id만 보내서 컬럼 이동
 app.put('/api/posts/:id', requireAuth, (req, res) => {
   const post = db.prepare('SELECT * FROM posts WHERE id = ?').get(req.params.id);
   if (!post) return res.status(404).json({ error: '게시물이 없습니다.' });
@@ -247,19 +247,31 @@ app.put('/api/posts/:id', requireAuth, (req, res) => {
     if (!columnId) return res.status(400).json({ error: '컬럼이 올바르지 않습니다.' });
   }
 
-  let { title, content } = post;
-  if (req.body.content !== undefined) {
-    content = String(req.body.content).trim();
-    const hasFiles = db.prepare("SELECT 1 FROM attachments WHERE owner_type = 'post' AND owner_id = ?").get(post.id);
-    if (!content && !hasFiles) return res.status(400).json({ error: '내용을 입력하세요.' });
-    if (content.length > 2000) return res.status(400).json({ error: '내용은 2000자 이하로 입력하세요.' });
-  }
+  let { title, content, color } = post;
+  const editing = req.body.content !== undefined || req.body.title !== undefined || req.body.color !== undefined
+    || req.body.attachment_ids !== undefined || req.body.remove_attachment_ids !== undefined;
+  if (req.body.content !== undefined) content = String(req.body.content).trim();
   if (req.body.title !== undefined) title = String(req.body.title).trim().slice(0, 100);
+  if (req.body.color !== undefined && POST_COLORS.includes(req.body.color)) color = req.body.color;
+  if (content.length > 2000) return res.status(400).json({ error: '내용은 2000자 이하로 입력하세요.' });
+
+  const removeIds = Array.isArray(req.body.remove_attachment_ids) ? req.body.remove_attachment_ids.map(Number) : [];
+  const addIds = Array.isArray(req.body.attachment_ids) ? req.body.attachment_ids : [];
+  if (editing) {
+    const existing = db.prepare("SELECT id FROM attachments WHERE owner_type = 'post' AND owner_id = ?").all(post.id).map((a) => a.id);
+    const remaining = existing.filter((id) => !removeIds.includes(id)).length + uploads.countClaimable(addIds, req.user.uid);
+    if (!content && remaining === 0) return res.status(400).json({ error: '내용을 입력하거나 파일을 첨부하세요.' });
+  }
 
   const position = columnId !== post.column_id ? topPosition(columnId) : post.position;
-  db.prepare('UPDATE posts SET title = ?, content = ?, column_id = ?, position = ? WHERE id = ?').run(
-    title, content, columnId, position, req.params.id
-  );
+  db.transaction(() => {
+    uploads.removeFromPost(post.id, removeIds);
+    uploads.claim('post', post.id, addIds, req.user.uid);
+    db.prepare(
+      `UPDATE posts SET title = ?, content = ?, color = ?, column_id = ?, position = ?,
+       edited_at = CASE WHEN ? THEN datetime('now') ELSE edited_at END WHERE id = ?`
+    ).run(title, content, color, columnId, position, editing ? 1 : 0, req.params.id);
+  })();
   res.json({ ok: true });
 });
 

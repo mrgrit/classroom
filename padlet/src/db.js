@@ -45,7 +45,8 @@ CREATE TABLE IF NOT EXISTS posts (
   content     TEXT NOT NULL,
   color       TEXT NOT NULL DEFAULT 'yellow',
   position    INTEGER NOT NULL DEFAULT 0,
-  created_at  TEXT NOT NULL DEFAULT (datetime('now'))
+  created_at  TEXT NOT NULL DEFAULT (datetime('now')),
+  edited_at   TEXT
 );
 
 CREATE TABLE IF NOT EXISTS likes (
@@ -122,6 +123,9 @@ if (!postCols.includes('position')) {
     )
   `);
 }
+
+// 게시물 수정 기능 이전 DB: edited_at 추가
+if (!postCols.includes('edited_at')) db.exec('ALTER TABLE posts ADD COLUMN edited_at TEXT');
 
 module.exports = db;
 module.exports.DEFAULT_COLUMN_TITLE = DEFAULT_COLUMN_TITLE;
