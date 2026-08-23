@@ -19,7 +19,7 @@ app.use(express.static(path.join(__dirname, 'public')));
 
 const PORT = process.env.PORT || 3000;
 const POST_COLORS = ['yellow', 'pink', 'blue', 'green', 'purple', 'orange'];
-const MAX_COLUMNS = 12;
+const MAX_COLUMNS = 40;
 
 // ---------- 인증 ----------
 
