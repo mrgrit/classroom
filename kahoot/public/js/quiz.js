@@ -11,6 +11,7 @@
     return;
   }
   document.getElementById('editor-view').classList.remove('hidden');
+  document.getElementById('ai-link').href = `/ai?quiz=${quizId}`;
 
   let questions = [];
   let dirty = false;

@@ -7,6 +7,8 @@ const { WebSocketServer } = require('ws');
 const db = require('./src/db');
 const { verifyGoogleToken, issueSessionCookie, requireAuth, requireAdmin, userFromCookieHeader } = require('./src/auth');
 const game = require('./src/game');
+const ai = require('./src/ai');
+const multer = require('multer');
 
 const app = express();
 app.set('trust proxy', 1);
@@ -142,6 +144,104 @@ app.delete('/api/quizzes/:id', requireAdmin, (req, res) => {
   res.json({ ok: true });
 });
 
+// 문제 추가(뒤에 덧붙임) — AI 생성 결과를 기존 퀴즈에 넣을 때 사용
+app.post('/api/quizzes/:id/questions', requireAdmin, (req, res) => {
+  const quiz = db.prepare('SELECT id FROM quizzes WHERE id = ?').get(req.params.id);
+  if (!quiz) return res.status(404).json({ error: '퀴즈가 없습니다.' });
+  let questions;
+  try {
+    questions = validateQuestions(req.body.questions || []);
+  } catch (err) {
+    return res.status(400).json({ error: err.message });
+  }
+  const existing = db.prepare('SELECT COUNT(*) AS c FROM questions WHERE quiz_id = ?').get(quiz.id).c;
+  if (existing + questions.length > MAX_QUESTIONS) return res.status(400).json({ error: `문제는 최대 ${MAX_QUESTIONS}개까지 가능합니다.` });
+  db.transaction(() => {
+    const insQ = db.prepare('INSERT INTO questions (quiz_id, position, text, time_limit, points) VALUES (?, ?, ?, ?, ?)');
+    const insO = db.prepare('INSERT INTO options (question_id, position, text, is_correct) VALUES (?, ?, ?, ?)');
+    questions.forEach((q, i) => {
+      const qid = insQ.run(quiz.id, existing + i, q.text, q.time_limit, q.points).lastInsertRowid;
+      q.options.forEach((o, j) => insO.run(qid, j, o.text, o.is_correct));
+    });
+    db.prepare("UPDATE quizzes SET updated_at = datetime('now') WHERE id = ?").run(quiz.id);
+  })();
+  res.json({ ok: true, question_count: existing + questions.length });
+});
+
+// ---------- AI 퀴즈 생성 (관리자) ----------
+
+const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 30 * 1024 * 1024, files: 10 } });
+const aiErr = (res, err) => res.status(err.status || 500).json({ error: err.message });
+
+app.get('/api/ai/settings', requireAdmin, (req, res) => {
+  res.json({
+    ollama_url: ai.getSetting('ollama_url') || '',
+    model: ai.getSetting('ollama_model') || '',
+    max_source_chars: ai.MAX_SOURCE_CHARS,
+    difficulties: ai.DIFFICULTIES,
+    languages: ai.LANGUAGES,
+  });
+});
+
+// Ollama 서버 연결 확인 + 모델 목록. 성공하면 주소 저장
+app.post('/api/ai/connect', requireAdmin, async (req, res) => {
+  try {
+    const url = ai.normalizeOllamaUrl(req.body.url);
+    const models = await ai.listModels(url);
+    ai.setSetting('ollama_url', url);
+    res.json({ url, models });
+  } catch (err) {
+    aiErr(res, err);
+  }
+});
+
+app.post('/api/ai/extract', requireAdmin, (req, res) => {
+  upload.array('files', 10)(req, res, async (err) => {
+    if (err) return res.status(400).json({ error: err.code === 'LIMIT_FILE_SIZE' ? '파일은 30MB 이하만 가능합니다.' : err.code === 'LIMIT_FILE_COUNT' ? '파일은 한 번에 10개까지 올릴 수 있습니다.' : err.message });
+    const parts = [];
+    for (const f of req.files || []) {
+      const name = Buffer.from(f.originalname, 'latin1').toString('utf8');
+      try {
+        const text = await ai.extractFile(name, f.buffer);
+        parts.push({ name, chars: text.length, text });
+      } catch (e) {
+        parts.push({ name, error: e.message });
+      }
+    }
+    res.json({ parts });
+  });
+});
+
+app.post('/api/ai/fetch-url', requireAdmin, async (req, res) => {
+  try {
+    res.json(await ai.extractUrl(req.body.url));
+  } catch (err) {
+    aiErr(res, err);
+  }
+});
+
+app.post('/api/ai/generate', requireAdmin, (req, res) => {
+  try {
+    const baseUrl = ai.normalizeOllamaUrl(req.body.url || ai.getSetting('ollama_url'));
+    const job = ai.startJob({ baseUrl, ...req.body });
+    ai.setSetting('ollama_url', baseUrl);
+    ai.setSetting('ollama_model', req.body.model);
+    res.status(202).json(ai.jobInfo(job));
+  } catch (err) {
+    aiErr(res, err);
+  }
+});
+
+app.get('/api/ai/jobs/:id', requireAdmin, (req, res) => {
+  const job = ai.getJob(req.params.id);
+  if (!job) return res.status(404).json({ error: '작업이 없습니다(만료되었을 수 있음).' });
+  res.json(ai.jobInfo(job));
+});
+
+app.delete('/api/ai/jobs/:id', requireAdmin, (req, res) => {
+  res.json({ ok: ai.cancelJob(req.params.id) });
+});
+
 // ---------- 게임 ----------
 
 app.post('/api/quizzes/:id/games', requireAdmin, (req, res) => {
@@ -244,6 +344,7 @@ app.get('/quiz/:id', page('quiz.html'));
 app.get('/host/:id', page('host.html'));
 app.get('/play/:id', page('play.html'));
 app.get('/results/:id', page('results.html'));
+app.get('/ai', page('ai.html'));
 
 // ---------- WebSocket ----------
 

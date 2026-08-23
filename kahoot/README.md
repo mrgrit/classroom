@@ -9,6 +9,7 @@
 - **학생 화면(휴대폰)**: 4색 도형 버튼, 정답/오답과 획득 점수, 현재 순위. 화면이 꺼졌다 켜져도 자동 재접속
 - **점수**: 카훗 방식 — 정답이면 `만점 × (1 − 소요시간비율 / 2)`, 빠를수록 높음
 - **결과표/CSV**: 참가자별 점수·정답 수·문제별 O/X·응답 시간. 엑셀용 CSV 다운로드
+- **AI로 퀴즈 만들기** (`/ai`, 관리자): Ollama 서버 주소 입력 → 모델 선택 → 자료(텍스트 붙여넣기 / PDF·PPTX·DOCX·HWPX·TXT 파일 / URL)에서 텍스트 추출 → 문제 수·난이도·언어·추가 지시를 정해 객관식 문제 생성 → 미리보기에서 골라 새 퀴즈로 만들거나 기존 퀴즈에 추가
 - **자체 DB**: SQLite 파일 하나 (`data/kahoot.db`)
 
 ## 기술 스택
@@ -51,6 +52,18 @@ journalctl --user -u kahoot -f   # 로그
 
 서버가 재시작되면 진행 중이던 게임은 종료 처리됩니다(그때까지의 답안은 기록에 남음).
 
+## AI로 퀴즈 만들기 (Ollama)
+
+별도 설치 없이 교내/연구실의 [Ollama](https://ollama.com) 서버를 연결해 씁니다.
+
+1. Ollama 서버에서 외부 접속 허용: `OLLAMA_HOST=0.0.0.0 ollama serve` (기본은 localhost만 받음), 모델 준비 `ollama pull qwen2.5:7b` 등
+2. 카훗 홈 → **✨ AI로 퀴즈 만들기** → 서버 주소(`192.168.0.10:11434` 형식, 포트 생략 시 11434) 입력 → **연결** → 모델 선택 (주소·모델은 저장되어 다음에 자동 연결)
+3. 자료 넣기: 텍스트 붙여넣기, 파일 업로드(PDF·PPTX·DOCX·HWPX·TXT·MD·CSV, 30MB·10개까지), URL(웹페이지·PDF 링크). 추출된 텍스트는 편집창에 모이므로 불필요한 부분은 지우면 됨. 스캔 이미지 PDF는 텍스트가 없어 지원 안 됨. 구형 .ppt/.doc/.hwp는 x 형식이나 PDF로 변환 필요
+4. 문제 수(5~30)·난이도·언어·추가 지시 → **퀴즈 생성**. 생성은 서버에서 백그라운드로 돌고 화면은 진행 상황(경과 시간·출력 글자 수)을 폴링 — 터널 환경의 응답 시간 제한과 무관. 취소 가능
+5. 결과에서 뺄 문제 체크 해제 → **새 퀴즈로 만들기** 또는 **기존 퀴즈에 추가** → 편집기로 이동해 검토·수정 후 게임 시작
+
+동작 메모: 자료는 앞 12,000자까지만 모델에 전달(`src/ai.js`의 `MAX_SOURCE_CHARS`). Ollama 구조화 출력(JSON 스키마)을 사용하고, 구버전 Ollama면 `format: "json"`으로 자동 폴백. 추론 모델(qwen3 등)은 `think: false`로 호출. 품질은 모델에 좌우되므로 7B 이상 한국어 가능한 모델(qwen2.5/qwen3, exaone, gemma3 등) 권장. 생성 문제는 기본 20초·1000점으로 들어가며 편집기에서 바꿀 수 있음.
+
 ## 환경 변수 (.env)
 
 | 변수 | 설명 |
@@ -72,6 +85,13 @@ GET    /api/quizzes/:id                  퀴즈 + 문제/보기
 PUT    /api/quizzes/:id                  퀴즈 전체 저장 {title, description, questions:[{text,time_limit,points,options:[{text,is_correct}]}]}
 POST   /api/quizzes/:id/duplicate        복제
 DELETE /api/quizzes/:id                  삭제 (게임 기록은 유지)
+POST   /api/quizzes/:id/questions        문제 덧붙이기 {questions:[...]} (AI 생성 결과 넣기)
+GET    /api/ai/settings                  저장된 Ollama 주소/모델
+POST   /api/ai/connect                   Ollama 연결 확인 + 모델 목록 {url}
+POST   /api/ai/extract                   파일 텍스트 추출 (multipart 'files')
+POST   /api/ai/fetch-url                 URL 텍스트 추출 {url}
+POST   /api/ai/generate                  생성 작업 시작 {model,text,count,difficulty,language,instructions} → {id}
+GET    /api/ai/jobs/:id                  작업 상태/결과 폴링,  DELETE 취소
 POST   /api/quizzes/:id/games            게임 생성 → {id, pin}
 POST   /api/games/join                   PIN으로 참가 {pin} → {id}
 GET    /api/games                        게임 기록 (관리자)
@@ -83,4 +103,4 @@ WS     /ws                               실시간: host/join/answer/next/end/ki
 
 ## DB 스키마
 
-`users` / `quizzes` / `questions` / `options` / `games` / `players` / `answers`. 게임 기록(`games`, `answers`)은 퀴즈 제목·문제·보기 텍스트를 스냅샷으로 저장하므로 퀴즈를 나중에 고치거나 지워도 결과는 그대로 남습니다.
+`users` / `quizzes` / `questions` / `options` / `games` / `players` / `answers` / `settings`(Ollama 주소·모델). 게임 기록(`games`, `answers`)은 퀴즈 제목·문제·보기 텍스트를 스냅샷으로 저장하므로 퀴즈를 나중에 고치거나 지워도 결과는 그대로 남습니다.
