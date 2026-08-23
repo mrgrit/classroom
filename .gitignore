@@ -1,0 +1,10 @@
+node_modules/
+.env
+*.log
+.DS_Store
+
+# SQLite 데이터베이스 (런타임 데이터)
+padlet/data/*.db
+padlet/data/*.db-journal
+padlet/data/*.db-wal
+padlet/data/*.db-shm

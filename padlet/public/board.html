@@ -1,0 +1,49 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>보드 - Classroom Padlet</title>
+  <link rel="stylesheet" href="/css/style.css">
+  <script src="https://accounts.google.com/gsi/client" async defer></script>
+</head>
+<body>
+  <header class="topbar">
+    <h1 class="logo"><a href="/">📌 Classroom Padlet</a></h1>
+    <div id="user-area" class="user-area"></div>
+  </header>
+
+  <section id="login-view" class="login-view hidden">
+    <div class="login-card">
+      <h2>구글 계정으로 로그인하세요</h2>
+      <div id="google-signin-btn"></div>
+      <p id="login-error" class="error hidden"></p>
+    </div>
+  </section>
+
+  <main id="board-view" class="container hidden">
+    <div class="board-header">
+      <div>
+        <h2 id="board-title"></h2>
+        <p id="board-desc" class="board-desc"></p>
+      </div>
+    </div>
+
+    <!-- 새 게시물 작성 -->
+    <form id="post-form" class="post-form">
+      <input type="text" id="post-title" placeholder="제목 (선택)" maxlength="100">
+      <textarea id="post-content" placeholder="내용을 입력하세요..." rows="3" maxlength="2000" required></textarea>
+      <div class="post-form-footer">
+        <div id="color-picker" class="color-picker"></div>
+        <button type="submit" class="btn btn-primary">게시하기</button>
+      </div>
+    </form>
+
+    <div id="post-grid" class="post-grid"></div>
+    <p id="empty-posts" class="empty hidden">아직 게시물이 없습니다. 첫 게시물을 올려보세요!</p>
+  </main>
+
+  <script src="/js/auth.js"></script>
+  <script src="/js/board.js"></script>
+</body>
+</html>
