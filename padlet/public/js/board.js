@@ -59,19 +59,26 @@
            <button class="icon-btn col-left" data-id="${col.id}" title="왼쪽으로" ${index === 0 ? 'disabled' : ''}>◀</button>
            <button class="icon-btn col-right" data-id="${col.id}" title="오른쪽으로" ${index === total - 1 ? 'disabled' : ''}>▶</button>
            <button class="icon-btn col-rename" data-id="${col.id}" title="이름 변경">✎</button>
+           <button class="icon-btn col-managers" data-id="${col.id}" title="컬럼 관리자 지정">👤</button>
            <button class="icon-btn col-delete" data-id="${col.id}" title="컬럼 삭제" ${total <= 1 ? 'disabled' : ''}>✕</button>
          </span>`
       : '';
     const composeArea = isComposing(col.id)
       ? composeHtml()
-      : `<button class="col-add-post" data-col="${col.id}">＋ 게시물 올리기</button>`;
+      : col.can_post
+        ? `<button class="col-add-post" data-col="${col.id}">＋ 게시물 올리기</button>`
+        : `<div class="col-locked">🔒 지정된 관리자만 작성할 수 있습니다</div>`;
+    const managersLine = col.managers.length
+      ? `<div class="col-managers-line" title="${col.managers.map((m) => escapeHtml(m.email)).join(', ')}">👤 ${col.managers.map((m) => escapeHtml(m.name || m.email.split('@')[0])).join(', ')}</div>`
+      : '';
     const colHandle = me.admin && total > 1 ? `<span class="drag-handle col-handle" title="끌어서 컬럼 순서 변경">⠿</span>` : '';
     return `
-    <section class="column" data-col="${col.id}">
+    <section class="column" data-col="${col.id}" data-can-post="${col.can_post ? 1 : 0}">
       <header class="column-head">
         <h3>${colHandle}${escapeHtml(col.title)} <span class="col-count">${col.posts.length}</span></h3>
         ${adminTools}
       </header>
+      ${managersLine}
       ${composeArea}
       <div class="column-posts">
         ${col.posts.map((p) => postCard(p)).join('')}
@@ -134,13 +141,13 @@
   function postCard(p) {
     if (isEditing(p.id)) return composeHtml();
     const { me, columns } = state;
-    const canEdit = p.is_mine || me.admin;
+    const canEdit = p.can_edit;
     const time = fmtTime(p.created_at) + (p.edited_at ? ' (수정됨)' : '');
     const draft = commentDrafts[p.id] || { text: '', files: [] };
     const moveSelect =
       canEdit && columns.length > 1
         ? `<select class="post-move" data-id="${p.id}" title="다른 컬럼으로 이동">
-             ${columns.map((c) => `<option value="${c.id}" ${c.id === p.column_id ? 'selected' : ''}>${escapeHtml(c.title)}</option>`).join('')}
+             ${columns.filter((c) => c.can_post || c.id === p.column_id).map((c) => `<option value="${c.id}" ${c.id === p.column_id ? 'selected' : ''}>${escapeHtml(c.title)}</option>`).join('')}
            </select>`
         : '';
     return `
@@ -347,6 +354,10 @@
       await run(() => api(`/api/columns/${col.id}`, { method: 'PUT', body: JSON.stringify({ title }) }));
       return;
     }
+    if (btn.classList.contains('col-managers')) {
+      openManagerModal(state.columns.find((c) => c.id === Number(btn.dataset.id)));
+      return;
+    }
     if (btn.classList.contains('col-delete')) {
       const col = state.columns.find((c) => c.id === Number(btn.dataset.id));
       if (!confirm(`"${col.title}" 컬럼과 그 안의 게시물 ${col.posts.length}개가 삭제됩니다. 계속할까요?`)) return;
@@ -529,7 +540,8 @@
         placeColumnPlaceholder(e.clientX, e.clientY);
       } else {
         const column = e.target.closest('.column');
-        if (column && column !== drag.placeholder) placePostPlaceholder(column, e.clientX, e.clientY);
+        const allowed = column && (column.dataset.canPost === '1' || column === drag.el.closest('.column'));
+        if (column && column !== drag.placeholder && allowed) placePostPlaceholder(column, e.clientX, e.clientY);
       }
       return;
     }
@@ -590,6 +602,54 @@
     drag.el.removeAttribute('draggable');
     $columns.querySelectorAll('.column.drop-target').forEach((c) => c.classList.remove('drop-target'));
     drag = null;
+  }
+
+  // ---------- 컬럼 관리자 지정 (관리자) ----------
+  // 로그인한 적 있는 사용자 목록에서 체크 + 이메일 직접 추가. 비우면 해제(누구나 작성 가능)
+  async function openManagerModal(col) {
+    let users = [];
+    try { users = await api('/api/users'); } catch (err) { return alert(err.message); }
+    const selected = new Set(col.managers.map((m) => m.email));
+    const known = new Set(users.map((u) => u.email.toLowerCase()));
+    const extra = [...selected].filter((e) => !known.has(e)); // 아직 로그인 안 한 이메일
+    const modal = document.createElement('div');
+    modal.className = 'modal-bg';
+    modal.innerHTML = `
+      <div class="modal">
+        <h3>"${escapeHtml(col.title)}" 컬럼 관리자</h3>
+        <p class="hint">지정하면 관리자(선생님)와 여기 선택된 사람만 이 컬럼에 글을 쓰고 고칠 수 있습니다. 아무도 선택하지 않으면 누구나 쓸 수 있습니다.</p>
+        <input type="text" class="mgr-filter" placeholder="이름/이메일 검색">
+        <div class="mgr-list">
+          ${users.map((u) => `<label class="mgr-item"><input type="checkbox" value="${escapeHtml(u.email.toLowerCase())}" ${selected.has(u.email.toLowerCase()) ? 'checked' : ''}> ${escapeHtml(u.name)} <span class="hint">${escapeHtml(u.email)}</span></label>`).join('')}
+          ${users.length ? '' : '<p class="hint">아직 로그인한 학생이 없습니다. 아래에 이메일을 직접 입력하세요.</p>'}
+        </div>
+        <input type="text" class="mgr-extra" placeholder="이메일 직접 추가 (쉼표로 여러 명, 아직 로그인 안 한 학생도 가능)" value="${escapeHtml(extra.join(', '))}">
+        <div class="modal-actions">
+          <button type="button" class="btn mgr-clear">모두 해제</button>
+          <span class="spacer"></span>
+          <button type="button" class="btn mgr-cancel">취소</button>
+          <button type="button" class="btn btn-primary mgr-save">저장</button>
+        </div>
+      </div>`;
+    document.body.appendChild(modal);
+    const close = () => modal.remove();
+    modal.querySelector('.mgr-filter').addEventListener('input', (e) => {
+      const q = e.target.value.trim().toLowerCase();
+      modal.querySelectorAll('.mgr-item').forEach((el) => el.classList.toggle('hidden', q && !el.textContent.toLowerCase().includes(q)));
+    });
+    modal.querySelector('.mgr-clear').addEventListener('click', () => {
+      modal.querySelectorAll('.mgr-item input').forEach((c) => { c.checked = false; });
+      modal.querySelector('.mgr-extra').value = '';
+    });
+    modal.querySelector('.mgr-cancel').addEventListener('click', close);
+    modal.addEventListener('click', (e) => { if (e.target === modal) close(); });
+    modal.querySelector('.mgr-save').addEventListener('click', async () => {
+      const emails = [...modal.querySelectorAll('.mgr-item input:checked')].map((c) => c.value);
+      emails.push(...modal.querySelector('.mgr-extra').value.split(',').map((e) => e.trim()).filter(Boolean));
+      const ok = await run(() => api(`/api/columns/${col.id}/managers`, { method: 'PUT', body: JSON.stringify({ emails }) }));
+      if (ok) close();
+    });
+    modal.querySelector('.mgr-filter').focus();
   }
 
   // ---------- 이미지 크게 보기 (라이트박스) ----------

@@ -36,6 +36,14 @@ CREATE TABLE IF NOT EXISTS columns (
   created_at  TEXT NOT NULL DEFAULT (datetime('now'))
 );
 
+-- 컬럼 관리자: 지정되면 관리자(admin)와 여기 등록된 이메일의 사용자만 그 컬럼에 글 작성/수정/삭제 가능
+CREATE TABLE IF NOT EXISTS column_managers (
+  column_id   INTEGER NOT NULL REFERENCES columns(id) ON DELETE CASCADE,
+  email       TEXT NOT NULL,
+  created_at  TEXT NOT NULL DEFAULT (datetime('now')),
+  PRIMARY KEY (column_id, email)
+);
+
 CREATE TABLE IF NOT EXISTS posts (
   id          INTEGER PRIMARY KEY AUTOINCREMENT,
   board_id    INTEGER NOT NULL REFERENCES boards(id) ON DELETE CASCADE,

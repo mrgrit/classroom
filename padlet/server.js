@@ -98,6 +98,26 @@ app.delete('/api/boards/:id', requireAdmin, (req, res) => {
   res.json({ ok: true });
 });
 
+// ---------- 컬럼 권한 ----------
+// 컬럼에 관리자가 지정되어 있으면 admin + 지정 관리자만 글 작성/수정/삭제/이동 가능.
+// 지정이 없으면 누구나 작성, 본인 글만 수정/삭제 (admin은 모두)
+const managerStmt = db.prepare('SELECT email FROM column_managers WHERE column_id = ? ORDER BY email');
+function columnManagers(columnId) {
+  return managerStmt.all(columnId).map((r) => r.email);
+}
+function isColumnManager(user, columnId) {
+  return user.admin || columnManagers(columnId).includes((user.email || '').toLowerCase());
+}
+function canPostIn(user, columnId) {
+  return user.admin || !columnManagers(columnId).length || isColumnManager(user, columnId);
+}
+function canEditPost(user, post) {
+  if (user.admin) return true;
+  if (columnManagers(post.column_id).length) return isColumnManager(user, post.column_id);
+  return post.user_id === user.uid;
+}
+const MANAGED_MSG = '이 컬럼은 지정된 관리자만 글을 쓰거나 고칠 수 있습니다.';
+
 // 보드 상세: 컬럼별 게시물 + 좋아요 수/내 좋아요 여부 + 댓글까지 한 번에
 app.get('/api/boards/:id', requireAuth, (req, res) => {
   const board = db
@@ -126,11 +146,18 @@ app.get('/api/boards/:id', requireAuth, (req, res) => {
      WHERE c.post_id = ? ORDER BY c.created_at ASC`
   );
   uploads.attachTo('post', posts);
+  const nameByEmail = new Map(db.prepare('SELECT email, name FROM users').all().map((u) => [u.email.toLowerCase(), u.name]));
+  for (const col of columns) {
+    col.managers = columnManagers(col.id).map((email) => ({ email, name: nameByEmail.get(email) || null }));
+    col.can_post = canPostIn(req.user, col.id);
+    col.can_manage = isColumnManager(req.user, col.id);
+  }
   const byColumn = new Map(columns.map((c) => [c.id, []]));
   for (const post of posts) {
     post.comments = commentStmt.all(post.id);
     uploads.attachTo('comment', post.comments);
     post.is_mine = post.user_id === req.user.uid;
+    post.can_edit = canEditPost(req.user, post);
     (byColumn.get(post.column_id) || byColumn.get(columns[0]?.id))?.push(post);
   }
   for (const col of columns) col.posts = byColumn.get(col.id);
@@ -178,6 +205,27 @@ app.put('/api/boards/:id/columns/order', requireAdmin, (req, res) => {
   res.json({ ok: true });
 });
 
+// 컬럼 관리자 지정(전체 교체): {emails: [...]} — 빈 배열이면 지정 해제(누구나 작성 가능으로 복귀)
+app.put('/api/columns/:id/managers', requireAdmin, (req, res) => {
+  const col = db.prepare('SELECT id FROM columns WHERE id = ?').get(req.params.id);
+  if (!col) return res.status(404).json({ error: '컬럼이 없습니다.' });
+  const emails = [...new Set((Array.isArray(req.body.emails) ? req.body.emails : []).map((e) => String(e).trim().toLowerCase()).filter(Boolean))];
+  const bad = emails.find((e) => !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(e));
+  if (bad) return res.status(400).json({ error: `이메일 형식이 올바르지 않습니다: ${bad}` });
+  if (emails.length > 20) return res.status(400).json({ error: '컬럼 관리자는 최대 20명까지 지정할 수 있습니다.' });
+  db.transaction(() => {
+    db.prepare('DELETE FROM column_managers WHERE column_id = ?').run(col.id);
+    const ins = db.prepare('INSERT INTO column_managers (column_id, email) VALUES (?, ?)');
+    emails.forEach((e) => ins.run(col.id, e));
+  })();
+  res.json({ ok: true, emails });
+});
+
+// 로그인한 적 있는 사용자 목록 (컬럼 관리자 선택용)
+app.get('/api/users', requireAdmin, (req, res) => {
+  res.json(db.prepare('SELECT id, email, name FROM users ORDER BY name, email').all());
+});
+
 app.delete('/api/columns/:id', requireAdmin, (req, res) => {
   const col = db.prepare('SELECT * FROM columns WHERE id = ?').get(req.params.id);
   if (!col) return res.status(404).json({ error: '컬럼이 없습니다.' });
@@ -219,6 +267,7 @@ app.post('/api/boards/:id/posts', requireAuth, (req, res) => {
 
   const columnId = resolveColumn(board.id, req.body.column_id);
   if (!columnId) return res.status(400).json({ error: '컬럼이 올바르지 않습니다.' });
+  if (!canPostIn(req.user, columnId)) return res.status(403).json({ error: MANAGED_MSG });
 
   const title = (req.body.title || '').trim().slice(0, 100);
   const color = POST_COLORS.includes(req.body.color) ? req.body.color : 'yellow';
@@ -238,13 +287,14 @@ app.post('/api/boards/:id/posts', requireAuth, (req, res) => {
 app.put('/api/posts/:id', requireAuth, (req, res) => {
   const post = db.prepare('SELECT * FROM posts WHERE id = ?').get(req.params.id);
   if (!post) return res.status(404).json({ error: '게시물이 없습니다.' });
-  if (post.user_id !== req.user.uid && !req.user.admin)
-    return res.status(403).json({ error: '본인 게시물만 수정할 수 있습니다.' });
+  if (!canEditPost(req.user, post))
+    return res.status(403).json({ error: columnManagers(post.column_id).length ? MANAGED_MSG : '본인 게시물만 수정할 수 있습니다.' });
 
   let columnId = post.column_id;
   if (req.body.column_id !== undefined) {
     columnId = resolveColumn(post.board_id, req.body.column_id);
     if (!columnId) return res.status(400).json({ error: '컬럼이 올바르지 않습니다.' });
+    if (columnId !== post.column_id && !canPostIn(req.user, columnId)) return res.status(403).json({ error: MANAGED_MSG });
   }
 
   let { title, content, color } = post;
@@ -279,11 +329,12 @@ app.put('/api/posts/:id', requireAuth, (req, res) => {
 app.put('/api/posts/:id/move', requireAuth, (req, res) => {
   const post = db.prepare('SELECT * FROM posts WHERE id = ?').get(req.params.id);
   if (!post) return res.status(404).json({ error: '게시물이 없습니다.' });
-  if (post.user_id !== req.user.uid && !req.user.admin)
-    return res.status(403).json({ error: '본인 게시물만 이동할 수 있습니다.' });
+  if (!canEditPost(req.user, post))
+    return res.status(403).json({ error: columnManagers(post.column_id).length ? MANAGED_MSG : '본인 게시물만 이동할 수 있습니다.' });
 
   const columnId = resolveColumn(post.board_id, req.body.column_id ?? post.column_id);
   if (!columnId) return res.status(400).json({ error: '컬럼이 올바르지 않습니다.' });
+  if (columnId !== post.column_id && !canPostIn(req.user, columnId)) return res.status(403).json({ error: MANAGED_MSG });
   const index = Number.isInteger(req.body.index) && req.body.index >= 0 ? req.body.index : 0;
 
   db.transaction(() => {
@@ -301,8 +352,8 @@ app.put('/api/posts/:id/move', requireAuth, (req, res) => {
 app.delete('/api/posts/:id', requireAuth, (req, res) => {
   const post = db.prepare('SELECT * FROM posts WHERE id = ?').get(req.params.id);
   if (!post) return res.status(404).json({ error: '게시물이 없습니다.' });
-  if (post.user_id !== req.user.uid && !req.user.admin)
-    return res.status(403).json({ error: '본인 게시물만 삭제할 수 있습니다.' });
+  if (!canEditPost(req.user, post))
+    return res.status(403).json({ error: columnManagers(post.column_id).length ? MANAGED_MSG : '본인 게시물만 삭제할 수 있습니다.' });
 
   uploads.deleteForPosts([post.id]);
   db.prepare('DELETE FROM posts WHERE id = ?').run(req.params.id);
