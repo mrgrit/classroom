@@ -129,7 +129,7 @@
   function postCard(p) {
     const { me, columns } = state;
     const canEdit = p.is_mine || me.admin;
-    const time = p.created_at.replace('T', ' ').slice(0, 16);
+    const time = fmtTime(p.created_at);
     const draft = commentDrafts[p.id] || { text: '', files: [] };
     const moveSelect =
       canEdit && columns.length > 1
@@ -173,6 +173,15 @@
         </form>
       </div>
     </article>`;
+  }
+
+  // DB의 UTC 시각("YYYY-MM-DD HH:MM:SS") → 서울 시간 "YYYY-MM-DD HH:MM"
+  const timeFmt = new Intl.DateTimeFormat('sv-SE', {
+    timeZone: 'Asia/Seoul', year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit', hourCycle: 'h23',
+  });
+  function fmtTime(utc) {
+    const d = new Date(utc.replace(' ', 'T') + 'Z');
+    return isNaN(d) ? utc : timeFmt.format(d);
   }
 
   function fmtSize(n) {
