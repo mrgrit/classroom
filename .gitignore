@@ -9,3 +9,4 @@ padlet/data/*.db-journal
 padlet/data/*.db-wal
 padlet/data/*.db-shm
 padlet/data/tunnel-url.txt
+padlet/data/uploads/

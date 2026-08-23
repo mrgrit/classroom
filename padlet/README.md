@@ -3,8 +3,10 @@
 패들렛(Padlet)의 핵심 기능만 담은 자체 호스팅 클론입니다.
 
 - **구글 로그인**으로 학생 식별 (Google Identity Services + 서버 측 ID 토큰 검증)
-- **관리자**(기본: `mrgrit@ync.ac.kr`)만 보드(담벼락) 생성/삭제
-- **학생**: 게시물 작성(색상 선택), 본인 게시물 수정/삭제, 좋아요, 댓글
+- **관리자**(기본: `mrgrit@ync.ac.kr`)만 보드(담벼락) 생성/삭제, 보드 안의 **컬럼**(섹션) 추가/이름 변경/순서 이동/삭제
+- **컬럼 레이아웃**: 패들렛 '셸프'처럼 보드 하나에 컬럼 여러 개(예: 1조/2조/3조), 컬럼이 1개면 전체폭 담벼락
+- **학생**: 컬럼별 게시물 작성(색상 선택), 본인 게시물 수정/삭제/컬럼 이동, 좋아요, 댓글
+- **파일 첨부**: 게시물(최대 5개)·댓글(최대 2개)에 파일 첨부 — **캡처한 이미지를 Ctrl+V로 바로 붙여넣기**, 드래그 앤 드롭, 📎 버튼. 이미지는 인라인 표시, 그 외(PDF/문서/zip)는 다운로드 링크. 파일당 10MB, 로그인 사용자만 열람 가능
 - **자체 DB**: SQLite 파일 하나 (`data/padlet.db`) — 외부 DB 서버 불필요
 - 5초 폴링으로 다른 학생의 게시물이 자동으로 나타남
 
@@ -79,8 +81,10 @@ systemctl --user restart padlet-tunnel          # 터널 재시작 → URL 바�
 | 기능 | 학생 | 관리자 |
 |---|---|---|
 | 보드 생성/삭제 | ✕ | ✔ |
-| 게시물 작성 | ✔ | ✔ |
-| 게시물 수정/삭제 | 본인 것만 | 모두 |
+| 컬럼 추가/이름 변경/순서/삭제 | ✕ | ✔ |
+| 게시물 작성 (컬럼 선택) | ✔ | ✔ |
+| 게시물 수정/삭제/컬럼 이동 | 본인 것만 | 모두 |
+| 파일 첨부 (게시물/댓글) | ✔ | ✔ |
 | 좋아요 (토글) | ✔ | ✔ |
 | 댓글 작성 | ✔ | ✔ |
 | 댓글 삭제 | 본인 것만 | 모두 |
@@ -95,15 +99,21 @@ GET    /api/me                      내 정보
 GET    /api/boards                  보드 목록
 POST   /api/boards                  보드 생성 (관리자)
 DELETE /api/boards/:id              보드 삭제 (관리자)
-GET    /api/boards/:id              보드 상세 (게시물+좋아요+댓글)
-POST   /api/boards/:id/posts        게시물 작성
-PUT    /api/posts/:id               게시물 수정 (본인/관리자)
+GET    /api/boards/:id              보드 상세 (컬럼별 게시물+첨부+좋아요+댓글)
+POST   /api/boards/:id/columns      컬럼 추가 (관리자)
+PUT    /api/columns/:id             컬럼 이름 변경 (관리자)
+PUT    /api/boards/:id/columns/order 컬럼 순서 변경 {ids:[...]} (관리자)
+DELETE /api/columns/:id             컬럼 삭제, 게시물 포함 (관리자, 마지막 컬럼은 불가)
+POST   /api/uploads                 파일 업로드 (multipart 'file') → {id,url,...}
+GET    /uploads/:name               첨부파일 열람 (로그인 필요)
+POST   /api/boards/:id/posts        게시물 작성 {column_id, content, attachment_ids}
+PUT    /api/posts/:id               게시물 수정/컬럼 이동 (본인/관리자)
 DELETE /api/posts/:id               게시물 삭제 (본인/관리자)
 POST   /api/posts/:id/like          좋아요 토글
-POST   /api/posts/:id/comments      댓글 작성
+POST   /api/posts/:id/comments      댓글 작성 {content, attachment_ids}
 DELETE /api/comments/:id            댓글 삭제 (본인/관리자)
 ```
 
 ## DB 스키마
 
-`users` / `boards` / `posts` / `likes` / `comments` 5개 테이블, `src/db.js`에서 서버 시작 시 자동 생성됩니다. DB 파일은 `data/padlet.db`에 저장되며 git에는 포함되지 않습니다.
+`users` / `boards` / `columns` / `posts` / `likes` / `comments` / `attachments` 7개 테이블, `src/db.js`에서 서버 시작 시 자동 생성·마이그레이션됩니다(컬럼 기능 이전 DB는 보드마다 기본 컬럼 "게시물"이 생기고 기존 게시물이 배정됨). DB 파일은 `data/padlet.db`, 첨부파일은 `data/uploads/`에 저장되며 git에는 포함되지 않습니다. `PADLET_DATA_DIR` 환경변수로 데이터 위치를 바꿀 수 있습니다.

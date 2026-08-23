@@ -21,26 +21,17 @@
     </div>
   </section>
 
-  <main id="board-view" class="container hidden">
+  <main id="board-view" class="board-page hidden">
     <div class="board-header">
       <div>
         <h2 id="board-title"></h2>
         <p id="board-desc" class="board-desc"></p>
       </div>
+      <div id="board-tools" class="board-tools"></div>
     </div>
 
-    <!-- 새 게시물 작성 -->
-    <form id="post-form" class="post-form">
-      <input type="text" id="post-title" placeholder="제목 (선택)" maxlength="100">
-      <textarea id="post-content" placeholder="내용을 입력하세요..." rows="3" maxlength="2000" required></textarea>
-      <div class="post-form-footer">
-        <div id="color-picker" class="color-picker"></div>
-        <button type="submit" class="btn btn-primary">게시하기</button>
-      </div>
-    </form>
-
-    <div id="post-grid" class="post-grid"></div>
-    <p id="empty-posts" class="empty hidden">아직 게시물이 없습니다. 첫 게시물을 올려보세요!</p>
+    <!-- 컬럼들이 가로로 나열됨 (패들렛 셸프) -->
+    <div id="board-columns" class="board-columns"></div>
   </main>
 
   <script src="/js/auth.js"></script>

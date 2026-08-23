@@ -146,50 +146,84 @@ body {
 }
 .board-delete { position: absolute; top: 12px; right: 12px; }
 
-/* ---------- 보드 상세 ---------- */
-.board-header { margin-bottom: 20px; }
+/* ---------- 보드 상세 (셸프 레이아웃) ---------- */
+.board-page { padding: 20px 24px; }
+.board-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 16px;
+  margin-bottom: 16px;
+}
 .board-desc { color: var(--text-dim); margin-top: 4px; }
+.board-tools { flex-shrink: 0; }
 
-.post-form {
-  background: var(--surface);
+/* 컬럼이 가로로 나열되고 넘치면 가로 스크롤 */
+.board-columns {
+  display: flex;
+  gap: 16px;
+  align-items: flex-start;
+  overflow-x: auto;
+  padding-bottom: 16px;
+  min-height: 60vh;
+}
+.column {
+  flex: 0 0 300px;
+  width: 300px;
+  background: rgba(0, 0, 0, 0.04);
   border-radius: var(--radius);
-  padding: 16px;
-  box-shadow: var(--shadow);
-  margin-bottom: 24px;
+  padding: 10px;
+  max-height: calc(100vh - 150px);
   display: flex;
   flex-direction: column;
-  gap: 10px;
 }
-.post-form input, .post-form textarea {
-  border: 1px solid var(--border);
-  border-radius: 6px;
-  padding: 10px 12px;
+.column-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 4px 6px 10px;
+}
+.column-head h3 { font-size: 15px; display: flex; align-items: center; gap: 6px; }
+.col-count {
+  background: rgba(0, 0, 0, 0.1);
+  color: var(--text-dim);
+  font-size: 11px;
+  font-weight: 700;
+  padding: 1px 7px;
+  border-radius: 10px;
+}
+.col-tools { display: flex; gap: 2px; }
+.col-tools .icon-btn:disabled { opacity: 0.3; cursor: default; }
+.col-tools .icon-btn:disabled:hover { background: transparent; color: var(--text-dim); }
+
+.col-add-post {
+  width: 100%;
+  border: 2px dashed rgba(0, 0, 0, 0.15);
+  background: transparent;
+  border-radius: 8px;
+  padding: 10px;
+  color: var(--text-dim);
   font-size: 14px;
-  font-family: inherit;
-  resize: vertical;
-}
-.post-form-footer { display: flex; justify-content: space-between; align-items: center; }
-
-.color-picker { display: flex; gap: 8px; }
-.color-dot {
-  width: 24px;
-  height: 24px;
-  border-radius: 50%;
-  border: 2px solid transparent;
   cursor: pointer;
+  margin-bottom: 10px;
 }
-.color-dot.selected { border-color: var(--text); transform: scale(1.15); }
+.col-add-post:hover { border-color: var(--primary); color: var(--primary); background: rgba(255, 255, 255, 0.6); }
+.column-posts { overflow-y: auto; flex: 1; padding-right: 2px; }
+.col-empty { color: var(--text-dim); font-size: 13px; text-align: center; padding: 20px 0; }
 
-/* ---------- 게시물 그리드 (masonry 느낌) ---------- */
-.post-grid { columns: 4 260px; column-gap: 16px; }
+/* 컬럼이 하나뿐이면 전체 너비 담벼락(masonry)으로 */
+.board-columns.single .column { flex: 1 1 auto; width: auto; max-height: none; }
+.board-columns.single .column-posts { columns: 4 260px; column-gap: 12px; overflow: visible; }
+.board-columns.single .post-card { break-inside: avoid; }
+.board-columns.single .col-add-post { max-width: 400px; }
+
+/* ---------- 게시물 카드 ---------- */
 .post-card {
-  break-inside: avoid;
-  margin-bottom: 16px;
+  margin-bottom: 12px;
   border-radius: var(--radius);
-  padding: 14px;
+  padding: 12px;
   box-shadow: var(--shadow);
 }
-
 .color-yellow { background: #fff8c4; }
 .color-pink   { background: #ffd9e8; }
 .color-blue   { background: #d4ecff; }
@@ -197,16 +231,19 @@ body {
 .color-purple { background: #e8dcff; }
 .color-orange { background: #ffe3c4; }
 
-.post-head { display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px; }
+.post-head { display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px; gap: 6px; }
+.post-head-tools { display: flex; align-items: center; gap: 4px; }
 .post-author { font-size: 12px; font-weight: 700; color: var(--text-dim); }
-.post-title { font-size: 16px; margin-bottom: 6px; }
+.post-title { font-size: 15px; margin-bottom: 6px; }
 .post-content { font-size: 14px; white-space: pre-wrap; word-break: break-word; }
-.post-foot {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  margin-top: 10px;
+.post-move {
+  font-size: 11px;
+  border: 1px solid rgba(0, 0, 0, 0.15);
+  border-radius: 4px;
+  background: rgba(255, 255, 255, 0.6);
+  max-width: 110px;
 }
+.post-foot { display: flex; justify-content: space-between; align-items: center; margin-top: 10px; }
 .post-time { font-size: 11px; color: var(--text-dim); }
 
 .like-btn {
@@ -219,22 +256,99 @@ body {
 }
 .like-btn.liked { background: var(--primary); color: #fff; }
 
+/* ---------- 첨부파일 표시 ---------- */
+.att-images { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 8px; }
+.att-images img {
+  max-width: 100%;
+  max-height: 260px;
+  border-radius: 6px;
+  display: block;
+  background: #fff;
+}
+.att-images.small img { max-height: 120px; max-width: 160px; }
+.att-files { display: flex; flex-direction: column; gap: 4px; margin-top: 8px; }
+.att-file {
+  font-size: 13px;
+  color: var(--text);
+  background: rgba(255, 255, 255, 0.7);
+  padding: 6px 10px;
+  border-radius: 6px;
+  text-decoration: none;
+  word-break: break-all;
+}
+.att-file:hover { background: #fff; }
+.att-size { color: var(--text-dim); font-size: 11px; }
+
+/* ---------- 작성 폼 (컬럼 안에 인라인) ---------- */
+.compose-form { display: flex; flex-direction: column; gap: 8px; border: 2px solid transparent; }
+.compose-form.dragging, .comment-form.dragging { border-color: var(--primary); border-radius: 8px; }
+.compose-form input, .compose-form textarea {
+  border: 1px solid rgba(0, 0, 0, 0.15);
+  border-radius: 6px;
+  padding: 8px 10px;
+  font-size: 14px;
+  font-family: inherit;
+  background: rgba(255, 255, 255, 0.8);
+  resize: vertical;
+  width: 100%;
+}
+.compose-footer { display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 8px; }
+.compose-actions { display: flex; gap: 6px; }
+
+.color-picker { display: flex; gap: 6px; }
+.color-dot {
+  width: 20px;
+  height: 20px;
+  border-radius: 50%;
+  border: 2px solid rgba(0, 0, 0, 0.1);
+  cursor: pointer;
+  padding: 0;
+}
+.color-dot.selected { border-color: var(--text); transform: scale(1.15); }
+
+/* 첨부 칩 (업로드 대기/완료 목록) */
+.chips { display: flex; flex-wrap: wrap; gap: 6px; }
+.chips:empty { display: none; }
+.chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  background: rgba(255, 255, 255, 0.85);
+  border: 1px solid rgba(0, 0, 0, 0.12);
+  border-radius: 6px;
+  padding: 3px 6px;
+  font-size: 12px;
+  max-width: 100%;
+}
+.chip.uploading { opacity: 0.6; }
+.chip img { width: 36px; height: 36px; object-fit: cover; border-radius: 4px; }
+.chip-name { max-width: 140px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.chip-remove { border: none; background: transparent; cursor: pointer; color: var(--text-dim); padding: 0 2px; }
+.chip-remove:hover { color: #dc3545; }
+
 /* ---------- 댓글 ---------- */
 .comments { margin-top: 10px; border-top: 1px dashed rgba(0, 0, 0, 0.15); padding-top: 8px; }
-.comment { display: flex; align-items: baseline; gap: 6px; font-size: 13px; padding: 3px 0; }
-.comment-author { font-weight: 700; flex-shrink: 0; }
-.comment-content { word-break: break-word; flex: 1; }
+.comment { display: flex; align-items: flex-start; gap: 6px; font-size: 13px; padding: 3px 0; }
+.comment-body { flex: 1; min-width: 0; }
+.comment-author { font-weight: 700; margin-right: 4px; }
+.comment-content { word-break: break-word; }
+.comment-form { margin-top: 6px; border: 2px solid transparent; }
+.comment-form .chips { margin-bottom: 4px; }
+.comment-row { display: flex; align-items: center; gap: 4px; }
 .comment-input {
-  width: 100%;
+  flex: 1;
+  min-width: 0;
   border: 1px solid rgba(0, 0, 0, 0.15);
   border-radius: 14px;
   padding: 6px 12px;
   font-size: 13px;
   background: rgba(255, 255, 255, 0.7);
-  margin-top: 6px;
 }
 
 @media (max-width: 600px) {
-  .container { padding: 12px; }
-  .post-grid { columns: 1; }
+  .container, .board-page { padding: 12px; }
+  .column { flex-basis: 85vw; width: 85vw; }
+  .board-columns { scroll-snap-type: x mandatory; }
+  .column { scroll-snap-align: start; }
+  .board-columns.single .column-posts { columns: 1; }
 }

@@ -10,9 +10,10 @@
     e.preventDefault();
     const title = document.getElementById('board-title').value.trim();
     const description = document.getElementById('board-desc').value.trim();
+    const columns = document.getElementById('board-columns').value.split(',').map((c) => c.trim()).filter(Boolean);
     if (!title) return;
     try {
-      await api('/api/boards', { method: 'POST', body: JSON.stringify({ title, description }) });
+      await api('/api/boards', { method: 'POST', body: JSON.stringify({ title, description, columns }) });
       document.getElementById('board-form').reset();
       loadBoards();
     } catch (err) {
@@ -31,7 +32,7 @@
         <h3>${escapeHtml(b.title)}</h3>
         <p>${escapeHtml(b.description)}</p>
         <div class="board-meta">
-          <span>📝 게시물 ${b.post_count}개</span>
+          <span>📝 게시물 ${b.post_count}개 · 컬럼 ${b.column_count}개</span>
           <span>만든이: ${escapeHtml(b.creator_name)}</span>
         </div>
         ${Auth.me.admin ? `<button class="btn btn-small btn-danger board-delete" data-id="${b.id}">삭제</button>` : ''}
