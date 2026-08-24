@@ -20,6 +20,8 @@
 
   // ---------- 데이터 로드 ----------
 
+  let renderedSnap = null; // 마지막으로 화면에 그린 서버 데이터 (변화 없으면 재렌더링 생략)
+
   async function load(force = false) {
     let data;
     try {
@@ -32,8 +34,11 @@
     document.title = `${data.board.title} - Classroom Padlet`;
     document.getElementById('board-title').textContent = data.board.title;
     document.getElementById('board-desc').textContent = data.board.description;
+    const snap = JSON.stringify(data);
+    if (!force && snap === renderedSnap) return;
     // 입력 중이면 폴링 갱신으로 화면을 다시 그리지 않음 (포커스/커서 보호)
     if (!force && isTyping()) return;
+    renderedSnap = snap;
     render();
   }
 
@@ -47,9 +52,21 @@
 
   function render() {
     const { columns, me } = state;
+    // innerHTML 교체는 스크롤을 0으로 되돌리므로 컬럼별 세로/보드 가로 위치를 보존
+    const colScroll = {};
+    for (const el of $columns.querySelectorAll('.column')) {
+      const posts = el.querySelector('.column-posts');
+      if (posts && posts.scrollTop) colScroll[el.dataset.col] = posts.scrollTop;
+    }
+    const boardScrollLeft = $columns.scrollLeft;
     $tools.innerHTML = me.admin ? `<button class="btn btn-small col-add">＋ 컬럼 추가</button>` : '';
     $columns.classList.toggle('single', columns.length === 1);
     $columns.innerHTML = columns.map((col, i) => columnHtml(col, i, columns.length)).join('');
+    $columns.scrollLeft = boardScrollLeft;
+    for (const [id, top] of Object.entries(colScroll)) {
+      const posts = $columns.querySelector(`.column[data-col="${id}"] .column-posts`);
+      if (posts) posts.scrollTop = top;
+    }
   }
 
   function columnHtml(col, index, total) {
