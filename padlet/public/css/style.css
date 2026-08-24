@@ -57,6 +57,8 @@ body {
   transition: filter 0.15s;
 }
 .btn:hover { filter: brightness(0.95); }
+a.btn { text-decoration: none; color: var(--text); display: inline-flex; align-items: center; gap: 4px; }
+a.btn.btn-primary { color: #fff; }
 .btn-primary { background: var(--primary); color: #fff; border-color: var(--primary); font-weight: 600; }
 .btn-small { padding: 4px 10px; font-size: 12px; }
 .btn-danger { background: #dc3545; color: #fff; border-color: #dc3545; }
@@ -416,3 +418,100 @@ body {
 .mgr-item:hover { background: rgba(0, 0, 0, 0.04); }
 .modal-actions { display: flex; gap: 8px; align-items: center; }
 .modal-actions .spacer { flex: 1; }
+
+/* ---------- 보드 접근권한 ---------- */
+.board-lock {
+  display: inline-block;
+  margin-top: 8px;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--primary);
+  background: rgba(233, 30, 99, 0.08);
+  padding: 2px 8px;
+  border-radius: 10px;
+}
+.card-btns { position: absolute; top: 12px; right: 12px; display: flex; gap: 6px; }
+.card-btns .board-delete { position: static; }
+.board-tools { display: flex; gap: 8px; align-items: center; }
+.board-tools .btn { text-decoration: none; color: var(--text); }
+.board-tools .btn-primary { color: #fff; }
+
+/* ---------- AI 학습자료 모달 ---------- */
+.ai-instructions {
+  width: 100%;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 8px 10px;
+  font: inherit;
+  font-size: 14px;
+  resize: vertical;
+}
+.ai-status { background: rgba(0, 0, 0, 0.05); border-radius: 6px; padding: 10px 12px; font-size: 14px; line-height: 1.5; }
+.ai-status a { color: var(--primary); }
+
+/* ---------- 내 정보 페이지 ---------- */
+.me-card {
+  background: var(--surface);
+  border-radius: var(--radius);
+  padding: 20px;
+  box-shadow: var(--shadow);
+  margin-bottom: 16px;
+}
+.me-card h2 { font-size: 16px; margin-bottom: 8px; }
+.me-card .hint { font-size: 13px; color: var(--text-dim); }
+.me-profile { display: flex; align-items: center; gap: 14px; }
+.me-profile .avatar { width: 52px; height: 52px; }
+.me-name { font-size: 17px; font-weight: 700; }
+.ai-form { display: flex; gap: 8px; align-items: flex-end; flex-wrap: wrap; margin-top: 12px; }
+.ai-form label { display: flex; flex-direction: column; gap: 4px; font-size: 13px; color: var(--text-dim); flex: 1; min-width: 220px; }
+.ai-form input, .ai-form select {
+  padding: 8px 10px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  font-size: 14px;
+  font-family: inherit;
+  width: 100%;
+  background: var(--surface);
+}
+.ai-form .btn { height: 36px; }
+#ai-connect-status, #ai-save-status { margin-top: 8px; min-height: 18px; }
+.report-row { display: flex; align-items: center; gap: 10px; padding: 10px 0; border-bottom: 1px solid var(--border); }
+.report-row:last-child { border-bottom: none; }
+.report-row-main { flex: 1; min-width: 0; }
+.report-row-main a { color: var(--text); font-weight: 600; text-decoration: none; word-break: break-all; }
+.report-row-main a:hover { color: var(--primary); }
+.report-row .btn { text-decoration: none; color: var(--text); flex-shrink: 0; }
+.report-row .btn-danger { color: #fff; }
+
+/* ---------- AI 학습자료 보기 페이지 ---------- */
+.report-page { max-width: 820px; margin: 0 auto; padding: 24px; }
+.report-head-line { display: flex; justify-content: space-between; align-items: flex-start; gap: 10px; flex-wrap: wrap; }
+.report-head-line .hint { font-size: 13px; color: var(--text-dim); margin-top: 4px; }
+.report-actions { display: flex; gap: 8px; flex-shrink: 0; }
+.report-actions .btn { text-decoration: none; color: var(--text); }
+.report-actions .btn-primary { color: #fff; }
+.report-actions .btn-danger { color: #fff; }
+.report-body {
+  background: var(--surface);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow);
+  padding: 28px 32px;
+  line-height: 1.7;
+  margin-top: 16px;
+  word-break: break-word;
+}
+.report-body h1, .report-body h2, .report-body h3 { margin: 20px 0 8px; line-height: 1.35; }
+.report-body h1:first-child { margin-top: 0; }
+.report-body h2 { border-left: 4px solid var(--primary); padding-left: 9px; font-size: 19px; }
+.report-body h3 { font-size: 16px; }
+.report-body p { margin: 8px 0; }
+.report-body ul, .report-body ol { margin: 8px 0; padding-left: 24px; }
+.report-body code { background: #f0f0f0; padding: 1px 5px; border-radius: 4px; font-size: 0.9em; }
+.report-body pre { background: #f6f6f6; border: 1px solid var(--border); border-radius: 6px; padding: 12px; overflow-x: auto; margin: 8px 0; }
+.report-body pre code { background: none; padding: 0; }
+.report-body blockquote { border-left: 3px solid #ccc; margin: 8px 0; padding: 4px 12px; color: var(--text-dim); }
+.report-body table { border-collapse: collapse; margin: 8px 0; max-width: 100%; }
+.report-body th, .report-body td { border: 1px solid var(--border); padding: 5px 10px; }
+.report-body th { background: rgba(0, 0, 0, 0.03); }
+.report-body img { max-width: 100%; }
+@media (max-width: 600px) { .report-body { padding: 18px 16px; } }

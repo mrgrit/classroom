@@ -59,7 +59,9 @@
       if (posts && posts.scrollTop) colScroll[el.dataset.col] = posts.scrollTop;
     }
     const boardScrollLeft = $columns.scrollLeft;
-    $tools.innerHTML = me.admin ? `<button class="btn btn-small col-add">＋ 컬럼 추가</button>` : '';
+    $tools.innerHTML =
+      `<a class="btn btn-small" href="/api/boards/${boardId}/export.md" title="보드 전체를 markdown 파일로 저장">⬇ 내보내기</a>` +
+      (me.admin ? `<button class="btn btn-small col-add">＋ 컬럼 추가</button>` : '');
     $columns.classList.toggle('single', columns.length === 1);
     $columns.innerHTML = columns.map((col, i) => columnHtml(col, i, columns.length)).join('');
     $columns.scrollLeft = boardScrollLeft;
@@ -72,14 +74,17 @@
   function columnHtml(col, index, total) {
     const { me } = state;
     const adminTools = me.admin
-      ? `<span class="col-tools">
-           <button class="icon-btn col-left" data-id="${col.id}" title="왼쪽으로" ${index === 0 ? 'disabled' : ''}>◀</button>
-           <button class="icon-btn col-right" data-id="${col.id}" title="오른쪽으로" ${index === total - 1 ? 'disabled' : ''}>▶</button>
-           <button class="icon-btn col-rename" data-id="${col.id}" title="이름 변경">✎</button>
-           <button class="icon-btn col-managers" data-id="${col.id}" title="컬럼 관리자 지정">👤</button>
-           <button class="icon-btn col-delete" data-id="${col.id}" title="컬럼 삭제" ${total <= 1 ? 'disabled' : ''}>✕</button>
-         </span>`
+      ? `<button class="icon-btn col-left" data-id="${col.id}" title="왼쪽으로" ${index === 0 ? 'disabled' : ''}>◀</button>
+         <button class="icon-btn col-right" data-id="${col.id}" title="오른쪽으로" ${index === total - 1 ? 'disabled' : ''}>▶</button>
+         <button class="icon-btn col-rename" data-id="${col.id}" title="이름 변경">✎</button>
+         <button class="icon-btn col-managers" data-id="${col.id}" title="컬럼 관리자 지정">👤</button>
+         <button class="icon-btn col-delete" data-id="${col.id}" title="컬럼 삭제" ${total <= 1 ? 'disabled' : ''}>✕</button>`
       : '';
+    const colTools = `<span class="col-tools">
+           <button class="icon-btn col-ai" data-id="${col.id}" title="AI 학습자료 만들기">🤖</button>
+           <button class="icon-btn col-export" data-id="${col.id}" title="컬럼 내용을 markdown 파일로 저장">⬇</button>
+           ${adminTools}
+         </span>`;
     const composeArea = isComposing(col.id)
       ? composeHtml()
       : col.can_post
@@ -93,7 +98,7 @@
     <section class="column" data-col="${col.id}" data-can-post="${col.can_post ? 1 : 0}">
       <header class="column-head">
         <h3>${colHandle}${escapeHtml(col.title)} <span class="col-count">${col.posts.length}</span></h3>
-        ${adminTools}
+        ${colTools}
       </header>
       ${managersLine}
       ${composeArea}
@@ -361,6 +366,14 @@
     }
     if (btn.classList.contains('comment-delete')) {
       await run(() => api(`/api/comments/${btn.dataset.id}`, { method: 'DELETE' }));
+      return;
+    }
+    if (btn.classList.contains('col-export')) {
+      location.href = `/api/columns/${btn.dataset.id}/export.md`;
+      return;
+    }
+    if (btn.classList.contains('col-ai')) {
+      openAiModal(state.columns.find((c) => c.id === Number(btn.dataset.id)));
       return;
     }
     // 관리자 컬럼 도구
@@ -667,6 +680,89 @@
       if (ok) close();
     });
     modal.querySelector('.mgr-filter').focus();
+  }
+
+  // ---------- AI 학습자료 만들기 ----------
+  // 내 정보에서 설정한 개인 Ollama로 컬럼 전체 기록을 정리·분석한 학습자료를 생성. 진행 상황은 1.5초 폴링
+  async function openAiModal(col) {
+    let setting = { ollama_url: '', model: '' };
+    try { setting = await api('/api/my/ai'); } catch {}
+    const ready = setting.ollama_url && setting.model;
+    const modal = document.createElement('div');
+    modal.className = 'modal-bg';
+    modal.innerHTML = `
+      <div class="modal">
+        <h3>🤖 "${escapeHtml(col.title)}" AI 학습자료 만들기</h3>
+        ${ready ? `
+        <p class="hint">이 컬럼의 게시물 ${col.posts.length}개와 댓글을 내 AI(<b>${escapeHtml(setting.model)}</b>)가 정리·분석해서 개인 학습자료를 만듭니다. 완성된 자료는 <a href="/me">내 정보</a>에 저장되고 PDF로 받을 수 있습니다.</p>
+        <textarea class="ai-instructions" rows="3" maxlength="500" placeholder="AI에게 추가로 요청할 내용 (선택) — 예: 시험 대비 요점 위주로 정리해줘"></textarea>
+        <div class="ai-status hidden"></div>
+        <div class="modal-actions">
+          <span class="spacer"></span>
+          <button type="button" class="btn ai-close">닫기</button>
+          <button type="button" class="btn btn-primary ai-start">생성 시작</button>
+        </div>` : `
+        <p class="hint">아직 내 AI가 설정되지 않았습니다. 먼저 <b>내 정보</b> 페이지에서 Ollama 서버를 연결하고 모델을 선택하세요.</p>
+        <div class="modal-actions">
+          <span class="spacer"></span>
+          <button type="button" class="btn ai-close">닫기</button>
+          <a class="btn btn-primary" href="/me">내 정보로 이동</a>
+        </div>`}
+      </div>`;
+    document.body.appendChild(modal);
+
+    let jobId = null;
+    let timer = null;
+    const close = () => {
+      if (timer) clearInterval(timer);
+      if (jobId) api(`/api/ai/jobs/${jobId}`, { method: 'DELETE' }).catch(() => {}); // 진행 중이면 취소
+      modal.remove();
+    };
+    modal.querySelector('.ai-close').addEventListener('click', close);
+    modal.addEventListener('click', (e) => { if (e.target === modal) close(); });
+
+    const startBtn = modal.querySelector('.ai-start');
+    const status = modal.querySelector('.ai-status');
+    startBtn?.addEventListener('click', async () => {
+      startBtn.disabled = true;
+      status.classList.remove('hidden');
+      status.textContent = '작업을 시작하는 중...';
+      let started;
+      try {
+        const job = await api(`/api/columns/${col.id}/report`, {
+          method: 'POST',
+          body: JSON.stringify({ instructions: modal.querySelector('.ai-instructions').value }),
+        });
+        jobId = job.job_id;
+        started = Date.now();
+      } catch (err) {
+        status.textContent = `❌ ${err.message}`;
+        startBtn.disabled = false;
+        return;
+      }
+      timer = setInterval(async () => {
+        let info;
+        try {
+          info = await api(`/api/ai/jobs/${jobId}`);
+        } catch (err) {
+          clearInterval(timer); timer = null; jobId = null;
+          status.textContent = `❌ ${err.message}`;
+          startBtn.disabled = false;
+          return;
+        }
+        if (info.status === 'running') {
+          status.textContent = `⏳ 생성 중... ${Math.round((Date.now() - started) / 1000)}초 경과 · ${info.chars}자 작성됨 (창을 닫으면 취소됩니다)`;
+        } else if (info.status === 'done') {
+          clearInterval(timer); timer = null; jobId = null;
+          status.innerHTML = `✅ 완성! <a href="/report/${info.report_id}"><b>자료 보기</b></a> · <a href="/api/reports/${info.report_id}/pdf">PDF 다운로드</a>` +
+            (info.truncated ? '<br><span class="hint">기록이 너무 길어 앞부분만 사용되었습니다.</span>' : '');
+        } else {
+          clearInterval(timer); timer = null; jobId = null;
+          status.textContent = `❌ ${info.error}`;
+          startBtn.disabled = false;
+        }
+      }, 1500);
+    });
   }
 
   // ---------- 이미지 크게 보기 (라이트박스) ----------

@@ -86,6 +86,37 @@ CREATE TABLE IF NOT EXISTS attachments (
   created_at    TEXT NOT NULL DEFAULT (datetime('now'))
 );
 
+-- 보드 멤버: 지정되면 admin + 등록된 이메일의 사용자만 그 보드에 접근 가능. 비어 있으면 전체 공개
+CREATE TABLE IF NOT EXISTS board_members (
+  board_id    INTEGER NOT NULL REFERENCES boards(id) ON DELETE CASCADE,
+  email       TEXT NOT NULL,
+  created_at  TEXT NOT NULL DEFAULT (datetime('now')),
+  PRIMARY KEY (board_id, email)
+);
+
+-- 학생별 개인 Ollama 서버/모델 설정
+CREATE TABLE IF NOT EXISTS ai_settings (
+  user_id     INTEGER PRIMARY KEY REFERENCES users(id),
+  ollama_url  TEXT NOT NULL DEFAULT '',
+  model       TEXT NOT NULL DEFAULT '',
+  updated_at  TEXT
+);
+
+-- AI가 만든 개인 학습자료. 컬럼/보드가 삭제돼도 과제 증빙으로 남도록 느슨한 참조 + 제목 스냅샷
+CREATE TABLE IF NOT EXISTS ai_reports (
+  id           INTEGER PRIMARY KEY AUTOINCREMENT,
+  user_id      INTEGER NOT NULL REFERENCES users(id),
+  board_id     INTEGER,
+  column_id    INTEGER,
+  board_title  TEXT,
+  column_title TEXT,
+  title        TEXT NOT NULL,
+  content_md   TEXT NOT NULL,
+  model        TEXT NOT NULL,
+  created_at   TEXT NOT NULL DEFAULT (datetime('now'))
+);
+
+CREATE INDEX IF NOT EXISTS idx_ai_reports_user ON ai_reports(user_id);
 CREATE INDEX IF NOT EXISTS idx_attachments_owner ON attachments(owner_type, owner_id);
 CREATE INDEX IF NOT EXISTS idx_columns_board ON columns(board_id, position);
 CREATE INDEX IF NOT EXISTS idx_posts_board ON posts(board_id);

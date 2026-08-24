@@ -10,6 +10,8 @@ const {
   requireAdmin,
 } = require('./src/auth');
 const uploads = require('./src/uploads');
+const ai = require('./src/ai');
+const report = require('./src/report');
 
 const app = express();
 app.set('trust proxy', 1); // Cloudflare Tunnel 등 리버스 프록시 뒤에서 https 인식
@@ -52,6 +54,19 @@ app.get('/api/me', requireAuth, (req, res) => {
 app.post('/api/uploads', requireAuth, uploads.handleUpload);
 app.get('/uploads/:name', requireAuth, uploads.serveFile);
 
+// ---------- 보드 접근 권한 ----------
+// 보드에 멤버가 지정되어 있으면 admin + 등록된 이메일만 접근(보기/쓰기) 가능. 지정이 없으면 로그인한 누구나
+const boardMemberStmt = db.prepare('SELECT email FROM board_members WHERE board_id = ? ORDER BY email');
+function boardMembers(boardId) {
+  return boardMemberStmt.all(boardId).map((r) => r.email);
+}
+function canAccessBoard(user, boardId) {
+  if (user.admin) return true;
+  const members = boardMembers(boardId);
+  return !members.length || members.includes((user.email || '').toLowerCase());
+}
+const PRIVATE_MSG = '이 보드는 지정된 학생만 접근할 수 있습니다.';
+
 // ---------- 보드 ----------
 
 app.get('/api/boards', requireAuth, (req, res) => {
@@ -63,8 +78,31 @@ app.get('/api/boards', requireAuth, (req, res) => {
        FROM boards b JOIN users u ON u.id = b.created_by
        ORDER BY b.created_at DESC`
     )
-    .all();
+    .all()
+    .filter((b) => canAccessBoard(req.user, b.id));
+  for (const b of boards) {
+    const members = boardMembers(b.id);
+    b.member_count = members.length;
+    b.is_private = members.length > 0;
+    if (req.user.admin) b.members = members;
+  }
   res.json(boards);
+});
+
+// 보드 멤버 지정(전체 교체): {emails: [...]} — 빈 배열이면 전체 공개로 복귀
+app.put('/api/boards/:id/members', requireAdmin, (req, res) => {
+  const board = db.prepare('SELECT id FROM boards WHERE id = ?').get(req.params.id);
+  if (!board) return res.status(404).json({ error: '보드가 없습니다.' });
+  const emails = [...new Set((Array.isArray(req.body.emails) ? req.body.emails : []).map((e) => String(e).trim().toLowerCase()).filter(Boolean))];
+  const bad = emails.find((e) => !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(e));
+  if (bad) return res.status(400).json({ error: `이메일 형식이 올바르지 않습니다: ${bad}` });
+  if (emails.length > 100) return res.status(400).json({ error: '보드 멤버는 최대 100명까지 지정할 수 있습니다.' });
+  db.transaction(() => {
+    db.prepare('DELETE FROM board_members WHERE board_id = ?').run(board.id);
+    const ins = db.prepare('INSERT INTO board_members (board_id, email) VALUES (?, ?)');
+    emails.forEach((e) => ins.run(board.id, e));
+  })();
+  res.json({ ok: true, emails });
 });
 
 // 컬럼 제목 목록 정리: 공백 제거, 빈 값 제외, 최대 개수 제한. 비어 있으면 기본 컬럼 1개
@@ -126,6 +164,7 @@ app.get('/api/boards/:id', requireAuth, (req, res) => {
     )
     .get(req.params.id);
   if (!board) return res.status(404).json({ error: '보드가 없습니다.' });
+  if (!canAccessBoard(req.user, board.id)) return res.status(403).json({ error: PRIVATE_MSG });
 
   const columns = db
     .prepare('SELECT id, title, position FROM columns WHERE board_id = ? ORDER BY position, id')
@@ -259,6 +298,7 @@ function topPosition(columnId) {
 app.post('/api/boards/:id/posts', requireAuth, (req, res) => {
   const board = db.prepare('SELECT id FROM boards WHERE id = ?').get(req.params.id);
   if (!board) return res.status(404).json({ error: '보드가 없습니다.' });
+  if (!canAccessBoard(req.user, board.id)) return res.status(403).json({ error: PRIVATE_MSG });
 
   const content = (req.body.content || '').trim();
   const attachmentIds = Array.isArray(req.body.attachment_ids) ? req.body.attachment_ids : [];
@@ -287,6 +327,7 @@ app.post('/api/boards/:id/posts', requireAuth, (req, res) => {
 app.put('/api/posts/:id', requireAuth, (req, res) => {
   const post = db.prepare('SELECT * FROM posts WHERE id = ?').get(req.params.id);
   if (!post) return res.status(404).json({ error: '게시물이 없습니다.' });
+  if (!canAccessBoard(req.user, post.board_id)) return res.status(403).json({ error: PRIVATE_MSG });
   if (!canEditPost(req.user, post))
     return res.status(403).json({ error: columnManagers(post.column_id).length ? MANAGED_MSG : '본인 게시물만 수정할 수 있습니다.' });
 
@@ -329,6 +370,7 @@ app.put('/api/posts/:id', requireAuth, (req, res) => {
 app.put('/api/posts/:id/move', requireAuth, (req, res) => {
   const post = db.prepare('SELECT * FROM posts WHERE id = ?').get(req.params.id);
   if (!post) return res.status(404).json({ error: '게시물이 없습니다.' });
+  if (!canAccessBoard(req.user, post.board_id)) return res.status(403).json({ error: PRIVATE_MSG });
   if (!canEditPost(req.user, post))
     return res.status(403).json({ error: columnManagers(post.column_id).length ? MANAGED_MSG : '본인 게시물만 이동할 수 있습니다.' });
 
@@ -352,6 +394,7 @@ app.put('/api/posts/:id/move', requireAuth, (req, res) => {
 app.delete('/api/posts/:id', requireAuth, (req, res) => {
   const post = db.prepare('SELECT * FROM posts WHERE id = ?').get(req.params.id);
   if (!post) return res.status(404).json({ error: '게시물이 없습니다.' });
+  if (!canAccessBoard(req.user, post.board_id)) return res.status(403).json({ error: PRIVATE_MSG });
   if (!canEditPost(req.user, post))
     return res.status(403).json({ error: columnManagers(post.column_id).length ? MANAGED_MSG : '본인 게시물만 삭제할 수 있습니다.' });
 
@@ -363,8 +406,9 @@ app.delete('/api/posts/:id', requireAuth, (req, res) => {
 // ---------- 좋아요 ----------
 
 app.post('/api/posts/:id/like', requireAuth, (req, res) => {
-  const post = db.prepare('SELECT id FROM posts WHERE id = ?').get(req.params.id);
+  const post = db.prepare('SELECT id, board_id FROM posts WHERE id = ?').get(req.params.id);
   if (!post) return res.status(404).json({ error: '게시물이 없습니다.' });
+  if (!canAccessBoard(req.user, post.board_id)) return res.status(403).json({ error: PRIVATE_MSG });
 
   const existing = db
     .prepare('SELECT 1 FROM likes WHERE post_id = ? AND user_id = ?')
@@ -381,8 +425,9 @@ app.post('/api/posts/:id/like', requireAuth, (req, res) => {
 // ---------- 댓글 ----------
 
 app.post('/api/posts/:id/comments', requireAuth, (req, res) => {
-  const post = db.prepare('SELECT id FROM posts WHERE id = ?').get(req.params.id);
+  const post = db.prepare('SELECT id, board_id FROM posts WHERE id = ?').get(req.params.id);
   if (!post) return res.status(404).json({ error: '게시물이 없습니다.' });
+  if (!canAccessBoard(req.user, post.board_id)) return res.status(403).json({ error: PRIVATE_MSG });
 
   const content = (req.body.content || '').trim();
   const attachmentIds = Array.isArray(req.body.attachment_ids) ? req.body.attachment_ids : [];
@@ -401,8 +446,11 @@ app.post('/api/posts/:id/comments', requireAuth, (req, res) => {
 });
 
 app.delete('/api/comments/:id', requireAuth, (req, res) => {
-  const comment = db.prepare('SELECT * FROM comments WHERE id = ?').get(req.params.id);
+  const comment = db
+    .prepare('SELECT c.*, p.board_id FROM comments c JOIN posts p ON p.id = c.post_id WHERE c.id = ?')
+    .get(req.params.id);
   if (!comment) return res.status(404).json({ error: '댓글이 없습니다.' });
+  if (!canAccessBoard(req.user, comment.board_id)) return res.status(403).json({ error: PRIVATE_MSG });
   if (comment.user_id !== req.user.uid && !req.user.admin)
     return res.status(403).json({ error: '본인 댓글만 삭제할 수 있습니다.' });
 
@@ -411,10 +459,171 @@ app.delete('/api/comments/:id', requireAuth, (req, res) => {
   res.json({ ok: true });
 });
 
+// ---------- 내 AI 설정 (학생별 Ollama) ----------
+
+app.get('/api/my/ai', requireAuth, (req, res) => {
+  const row = db.prepare('SELECT ollama_url, model FROM ai_settings WHERE user_id = ?').get(req.user.uid);
+  res.json(row || { ollama_url: '', model: '' });
+});
+
+// 서버 연결 확인 + 모델 목록 (저장은 하지 않음)
+app.post('/api/my/ai/connect', requireAuth, async (req, res) => {
+  try {
+    const url = ai.normalizeOllamaUrl(req.body.url);
+    const models = await ai.listModels(url);
+    res.json({ url, models });
+  } catch (err) {
+    res.status(err.status || 500).json({ error: err.message });
+  }
+});
+
+app.put('/api/my/ai', requireAuth, (req, res) => {
+  let url = '';
+  try {
+    url = req.body.ollama_url ? ai.normalizeOllamaUrl(req.body.ollama_url) : '';
+  } catch (err) {
+    return res.status(400).json({ error: err.message });
+  }
+  const model = String(req.body.model || '').trim().slice(0, 100);
+  db.prepare(
+    `INSERT INTO ai_settings (user_id, ollama_url, model, updated_at) VALUES (?, ?, ?, datetime('now'))
+     ON CONFLICT(user_id) DO UPDATE SET ollama_url = excluded.ollama_url, model = excluded.model, updated_at = excluded.updated_at`
+  ).run(req.user.uid, url, model);
+  res.json({ ok: true, ollama_url: url, model });
+});
+
+// ---------- AI 학습자료 생성 ----------
+
+// 컬럼 기록으로 개인 학습자료 생성 시작 → {job_id} (진행 상황은 폴링)
+app.post('/api/columns/:id/report', requireAuth, (req, res) => {
+  const col = db.prepare('SELECT * FROM columns WHERE id = ?').get(req.params.id);
+  if (!col) return res.status(404).json({ error: '컬럼이 없습니다.' });
+  if (!canAccessBoard(req.user, col.board_id)) return res.status(403).json({ error: PRIVATE_MSG });
+  const setting = db.prepare('SELECT ollama_url, model FROM ai_settings WHERE user_id = ?').get(req.user.uid);
+  if (!setting || !setting.ollama_url || !setting.model)
+    return res.status(400).json({ error: '먼저 내 정보 페이지에서 Ollama 서버를 연결하고 모델을 선택하세요.' });
+  try {
+    const job = ai.startReportJob({
+      user: { uid: req.user.uid, name: req.user.name },
+      columnId: col.id,
+      instructions: req.body.instructions,
+      ollamaUrl: setting.ollama_url,
+      model: setting.model,
+    });
+    res.status(202).json({ job_id: job.id });
+  } catch (err) {
+    res.status(err.status || 500).json({ error: err.message });
+  }
+});
+
+app.get('/api/ai/jobs/:id', requireAuth, (req, res) => {
+  const job = ai.getJob(req.params.id);
+  if (!job || job.userId !== req.user.uid) return res.status(404).json({ error: '작업을 찾을 수 없습니다.' });
+  res.json(ai.jobInfo(job));
+});
+
+app.delete('/api/ai/jobs/:id', requireAuth, (req, res) => {
+  const job = ai.getJob(req.params.id);
+  if (!job || job.userId !== req.user.uid) return res.status(404).json({ error: '작업을 찾을 수 없습니다.' });
+  ai.cancelJob(req.params.id);
+  res.json({ ok: true });
+});
+
+// ---------- AI 학습자료 (저장된 결과) ----------
+
+// 본인 것 또는 admin만 접근 가능. 실패 시 응답까지 처리하고 null 반환
+function findReport(req, res) {
+  const r = db
+    .prepare('SELECT r.*, u.name AS student_name FROM ai_reports r JOIN users u ON u.id = r.user_id WHERE r.id = ?')
+    .get(req.params.id);
+  if (!r) {
+    res.status(404).json({ error: '학습자료가 없습니다.' });
+    return null;
+  }
+  if (r.user_id !== req.user.uid && !req.user.admin) {
+    res.status(403).json({ error: '본인 학습자료만 볼 수 있습니다.' });
+    return null;
+  }
+  return r;
+}
+
+// 다운로드 파일명 (한글 파일명 RFC 5987 인코딩 + ASCII 대체)
+function setDownloadName(res, name) {
+  const ascii = name.replace(/[^\x20-\x7e]/g, '_').replace(/["\\]/g, '_');
+  const encoded = encodeURIComponent(name).replace(/['()*]/g, (c) => `%${c.charCodeAt(0).toString(16)}`);
+  res.setHeader('Content-Disposition', `attachment; filename="${ascii}"; filename*=UTF-8''${encoded}`);
+}
+
+app.get('/api/my/reports', requireAuth, (req, res) => {
+  const rows = db
+    .prepare(
+      `SELECT id, title, board_title, column_title, model, created_at
+       FROM ai_reports WHERE user_id = ? ORDER BY created_at DESC, id DESC`
+    )
+    .all(req.user.uid);
+  res.json(rows);
+});
+
+app.get('/api/reports/:id', requireAuth, (req, res) => {
+  const r = findReport(req, res);
+  if (!r) return;
+  res.json({ ...r, html: report.renderMarkdown(r.content_md) });
+});
+
+app.get('/api/reports/:id/pdf', requireAuth, async (req, res) => {
+  const r = findReport(req, res);
+  if (!r) return;
+  try {
+    const pdf = await report.reportPdf(r);
+    res.setHeader('Content-Type', 'application/pdf');
+    setDownloadName(res, `${r.title}.pdf`);
+    res.send(pdf);
+  } catch (err) {
+    res.status(err.status || 500).json({ error: err.message });
+  }
+});
+
+app.delete('/api/reports/:id', requireAuth, (req, res) => {
+  const r = findReport(req, res);
+  if (!r) return;
+  db.prepare('DELETE FROM ai_reports WHERE id = ?').run(r.id);
+  res.json({ ok: true });
+});
+
+// ---------- 내보내기 (markdown) ----------
+
+app.get('/api/columns/:id/export.md', requireAuth, (req, res) => {
+  const col = db.prepare('SELECT id, board_id FROM columns WHERE id = ?').get(req.params.id);
+  if (!col) return res.status(404).json({ error: '컬럼이 없습니다.' });
+  if (!canAccessBoard(req.user, col.board_id)) return res.status(403).json({ error: PRIVATE_MSG });
+  const { board, column, markdown } = ai.columnMarkdown(col.id);
+  res.setHeader('Content-Type', 'text/markdown; charset=utf-8');
+  setDownloadName(res, `${board.title}-${column.title}.md`);
+  res.send(markdown);
+});
+
+app.get('/api/boards/:id/export.md', requireAuth, (req, res) => {
+  const b = db.prepare('SELECT id FROM boards WHERE id = ?').get(req.params.id);
+  if (!b) return res.status(404).json({ error: '보드가 없습니다.' });
+  if (!canAccessBoard(req.user, b.id)) return res.status(403).json({ error: PRIVATE_MSG });
+  const { board, markdown } = ai.boardMarkdown(b.id);
+  res.setHeader('Content-Type', 'text/markdown; charset=utf-8');
+  setDownloadName(res, `${board.title}.md`);
+  res.send(markdown);
+});
+
 // ---------- 페이지 라우팅 ----------
 
 app.get('/board/:id', (req, res) => {
   res.sendFile(path.join(__dirname, 'public', 'board.html'));
+});
+
+app.get('/me', (req, res) => {
+  res.sendFile(path.join(__dirname, 'public', 'me.html'));
+});
+
+app.get('/report/:id', (req, res) => {
+  res.sendFile(path.join(__dirname, 'public', 'report.html'));
 });
 
 app.listen(PORT, () => {

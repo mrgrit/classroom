@@ -9,8 +9,20 @@
 - **학생**: 컬럼별 게시물 작성(색상 선택), 본인 게시물 **수정**(✎: 제목·내용·색상·첨부 추가/삭제, "수정됨" 표시)/삭제/컬럼 이동, 좋아요, 댓글
 - **드래그 앤 드롭**: 게시물의 ⠿ 손잡이를 끌어 같은 컬럼 안에서 위아래로, 또는 다른 컬럼으로 이동(본인 글, 관리자는 모두). 관리자는 컬럼 제목의 ⠿ 로 컬럼 좌우 순서 변경. 모바일(터치)에서는 드롭다운/◀▶ 버튼 사용
 - **파일 첨부**: 게시물(최대 5개)·댓글(최대 2개)에 파일 첨부 — **캡처한 이미지를 Ctrl+V로 바로 붙여넣기**, 드래그 앤 드롭, 📎 버튼. 이미지는 인라인 표시(클릭하면 페이지 안에서 크게 보기, ←→ 이동), 그 외(PDF/문서/zip)는 다운로드 링크. 파일당 10MB, 로그인 사용자만 열람 가능
+- **보드 접근권한**: 관리자가 보드 카드의 👥로 학생(이메일)을 지정하면 **관리자 + 지정된 학생만** 그 보드를 보고 쓸 수 있음(목록에서도 숨겨짐, 🔒 배지 표시). 지정이 없으면 로그인한 누구나 접근
+- **내 정보 페이지**(`/me`): 프로필 + **개인 Ollama 서버 연결**(주소 입력 → 연결 → 모델 선택 → 저장) + 내 AI 학습자료 목록
+- **AI 학습자료(PDF)**: 컬럼 헤더의 🤖 버튼 → 학생이 자기 Ollama 모델로 **컬럼 전체 기록(게시물+댓글)을 정리·분석한 개인화 학습자료**를 생성. 결과는 markdown으로 저장되고(`/report/:id`에서 보기) **A4 PDF로 다운로드** 가능. 수업 기록 기반 과제평가·자료 보강 용도
+- **내보내기**: 컬럼 헤더의 ⬇ 로 컬럼 전체, 보드 상단의 ⬇ 내보내기로 보드 전체를 **markdown 파일로 다운로드** (게시물·작성자·시각·첨부 파일명·댓글 포함) — 학생이 자기 AI로 꾸미고 보강하는 과제의 원본 자료
 - **자체 DB**: SQLite 파일 하나 (`data/padlet.db`) — 외부 DB 서버 불필요
 - 5초 폴링으로 다른 학생의 게시물이 자동으로 나타남
+
+## AI 학습자료 생성 구조
+
+- 학생마다 **자기 Ollama 서버**(`ai_settings`)를 사용 — 서버에 공용 AI 키/비용 없음
+- 생성은 백그라운드 작업으로 실행되고 브라우저가 1.5초마다 진행 상황(경과 시간·생성 글자 수)을 폴링 (Cloudflare Tunnel의 ~100초 응답 제한 회피)
+- 결과 markdown은 `ai_reports`에 저장 — 보드/컬럼이 삭제돼도 자료는 남음(과제 증빙), 본인 + 관리자만 열람 가능
+- PDF는 `playwright-core`가 시스템 캐시(`~/.cache/ms-playwright`)의 Chromium으로 렌더링 (별도 브라우저 다운로드 없음, 한글 폰트는 시스템 폰트 사용)
+- 모델/학생이 쓴 원시 HTML은 렌더링 시 전부 이스케이프 (XSS 방지)
 
 ## 기술 스택
 
@@ -82,7 +94,10 @@ systemctl --user restart padlet-tunnel          # 터널 재시작 → URL 바�
 
 | 기능 | 학생 | 관리자 |
 |---|---|---|
-| 보드 생성/삭제 | ✕ | ✔ |
+| 보드 생성/삭제/접근권한(멤버) 지정 | ✕ | ✔ |
+| 멤버 지정된 보드 접근(보기/쓰기 전부) | 지정된 학생만 | ✔ |
+| 컬럼/보드 markdown 내보내기 | 접근 가능한 보드만 | ✔ |
+| AI 학습자료 생성(자기 Ollama)/열람/PDF/삭제 | 본인 것만 | 열람은 모두 |
 | 컬럼 추가/이름 변경/순서/삭제/관리자 지정 | ✕ | ✔ |
 | 관리자 지정된 컬럼에 글 작성/수정/삭제 | 지정된 학생만 | ✔ |
 | 게시물 작성 (컬럼 선택) | ✔ | ✔ |
@@ -118,8 +133,23 @@ DELETE /api/posts/:id               게시물 삭제 (본인/관리자)
 POST   /api/posts/:id/like          좋아요 토글
 POST   /api/posts/:id/comments      댓글 작성 {content, attachment_ids}
 DELETE /api/comments/:id            댓글 삭제 (본인/관리자)
+PUT    /api/boards/:id/members      보드 접근권한(멤버) 지정 {emails:[...]} (관리자, 빈 배열이면 전체 공개)
+GET    /api/my/ai                   내 Ollama 설정 조회
+POST   /api/my/ai/connect           Ollama 서버 연결 확인 {url} → {url, models}
+PUT    /api/my/ai                   내 Ollama 설정 저장 {ollama_url, model}
+POST   /api/columns/:id/report      AI 학습자료 생성 시작 {instructions} → {job_id}
+GET    /api/ai/jobs/:id             생성 진행 상황 (본인만, 1.5초 폴링용)
+DELETE /api/ai/jobs/:id             생성 취소 (본인만)
+GET    /api/my/reports              내 학습자료 목록
+GET    /api/reports/:id             학습자료 조회 (markdown + 렌더링된 HTML, 본인/관리자)
+GET    /api/reports/:id/pdf         학습자료 A4 PDF 다운로드 (본인/관리자)
+DELETE /api/reports/:id             학습자료 삭제 (본인/관리자)
+GET    /api/columns/:id/export.md   컬럼 전체 markdown 다운로드
+GET    /api/boards/:id/export.md    보드 전체 markdown 다운로드
 ```
+
+멤버가 지정된 보드는 상세/글쓰기/수정/이동/삭제/좋아요/댓글/내보내기/AI 생성 전부에서 비멤버에게 403을 반환합니다.
 
 ## DB 스키마
 
-`users` / `boards` / `columns` / `column_managers` / `posts` / `likes` / `comments` / `attachments` 8개 테이블, `src/db.js`에서 서버 시작 시 자동 생성·마이그레이션됩니다(컬럼 기능 이전 DB는 보드마다 기본 컬럼 "게시물"이 생기고 기존 게시물이 배정됨, `posts.position`이 없던 DB는 기존 최신순으로 번호가 매겨짐). DB 파일은 `data/padlet.db`, 첨부파일은 `data/uploads/`에 저장되며 git에는 포함되지 않습니다. `PADLET_DATA_DIR` 환경변수로 데이터 위치를 바꿀 수 있습니다.
+`users` / `boards` / `columns` / `column_managers` / `board_members` / `posts` / `likes` / `comments` / `attachments` / `ai_settings` / `ai_reports` 11개 테이블, `src/db.js`에서 서버 시작 시 자동 생성·마이그레이션됩니다(컬럼 기능 이전 DB는 보드마다 기본 컬럼 "게시물"이 생기고 기존 게시물이 배정됨, `posts.position`이 없던 DB는 기존 최신순으로 번호가 매겨짐). DB 파일은 `data/padlet.db`, 첨부파일은 `data/uploads/`에 저장되며 git에는 포함되지 않습니다. `PADLET_DATA_DIR` 환경변수로 데이터 위치를 바꿀 수 있습니다.
