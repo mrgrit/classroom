@@ -97,10 +97,22 @@ CREATE INDEX IF NOT EXISTS idx_players_game ON players(game_id);
 CREATE INDEX IF NOT EXISTS idx_answers_game ON answers(game_id, question_index);
 `);
 
-// 배경 테마 기능 이전 DB: quizzes.theme / games.theme 추가
+// 배경 테마 기능 이전 DB: quizzes.theme / games.theme 추가 + 기존 퀴즈에 서로 다른 테마를 순서대로 배정
 for (const table of ['quizzes', 'games']) {
   const cols = db.prepare(`PRAGMA table_info('${table}')`).all().map((c) => c.name);
-  if (!cols.includes('theme')) db.exec(`ALTER TABLE ${table} ADD COLUMN theme TEXT NOT NULL DEFAULT ''`);
+  if (cols.includes('theme')) continue;
+  db.exec(`ALTER TABLE ${table} ADD COLUMN theme TEXT NOT NULL DEFAULT ''`);
+  if (table !== 'quizzes') continue;
+  const { suggestTheme } = require('../public/js/themes.js');
+  const used = [];
+  const setTheme = db.prepare('UPDATE quizzes SET theme = ? WHERE id = ?');
+  db.transaction(() => {
+    for (const { id } of db.prepare('SELECT id FROM quizzes ORDER BY id').all()) {
+      const theme = suggestTheme(used);
+      used.push(theme);
+      setTheme.run(theme, id);
+    }
+  })();
 }
 
 // 서버 재시작으로 메모리의 진행 상태를 잃은 게임은 종료 처리

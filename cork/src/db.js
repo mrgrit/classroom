@@ -199,9 +199,21 @@ if (!postCols.includes('position')) {
 // 게시물 수정 기능 이전 DB: edited_at 추가
 if (!postCols.includes('edited_at')) db.exec('ALTER TABLE posts ADD COLUMN edited_at TEXT');
 
-// 배경 테마 기능 이전 DB: boards.theme 추가
+// 배경 테마 기능 이전 DB: boards.theme 추가 + 기존 보드에 서로 다른 테마를 순서대로 배정
 const boardCols = db.prepare("PRAGMA table_info('boards')").all().map((c) => c.name);
-if (!boardCols.includes('theme')) db.exec("ALTER TABLE boards ADD COLUMN theme TEXT NOT NULL DEFAULT ''");
+if (!boardCols.includes('theme')) {
+  db.exec("ALTER TABLE boards ADD COLUMN theme TEXT NOT NULL DEFAULT ''");
+  const { suggestTheme } = require('../public/js/themes.js');
+  const used = [];
+  const setTheme = db.prepare('UPDATE boards SET theme = ? WHERE id = ?');
+  db.transaction(() => {
+    for (const { id } of db.prepare('SELECT id FROM boards ORDER BY id').all()) {
+      const theme = suggestTheme(used);
+      used.push(theme);
+      setTheme.run(theme, id);
+    }
+  })();
+}
 
 // 헤르메스 연동 이전 DB: posts.source 추가 ('web' | 'hermes' 대화 기록 | 'hermes-note' 메모)
 if (!postCols.includes('source')) db.exec("ALTER TABLE posts ADD COLUMN source TEXT NOT NULL DEFAULT 'web'");
