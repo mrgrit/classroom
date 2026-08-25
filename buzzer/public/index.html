@@ -1,0 +1,60 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>버저</title>
+  <link rel="stylesheet" href="/css/style.css">
+  <link rel="stylesheet" href="/css/themes.css">
+  <script src="https://accounts.google.com/gsi/client" async defer></script>
+</head>
+<body>
+  <header class="topbar">
+    <h1 class="logo"><a href="/">🎯 버저</a></h1>
+    <div id="user-area" class="user-area"></div>
+  </header>
+
+  <section id="login-view" class="login-view hidden">
+    <div class="login-card">
+      <h2>구글 계정으로 로그인하세요</h2>
+      <p>학교 구글 계정으로 로그인하면 퀴즈 게임에 참여할 수 있습니다.</p>
+      <div id="google-signin-btn"></div>
+      <p id="login-error" class="error hidden"></p>
+    </div>
+  </section>
+
+  <main id="home-view" class="container hidden">
+    <div class="join-card">
+      <h2>게임 PIN을 입력하세요</h2>
+      <form id="join-form" class="join-form">
+        <input type="text" id="pin-input" inputmode="numeric" pattern="[0-9]*" maxlength="6" placeholder="000000" autocomplete="off" required>
+        <button type="submit" class="btn">참가</button>
+      </form>
+      <div id="join-error" class="join-error"></div>
+    </div>
+
+    <div id="admin-view" class="hidden">
+      <div class="section-title">
+        <h2>내 퀴즈</h2>
+        <span><a class="btn" href="/ai">✨ AI로 퀴즈 만들기</a> <button id="new-quiz" class="btn btn-primary">＋ 새 퀴즈</button></span>
+      </div>
+      <div id="quiz-list" class="quiz-list"></div>
+      <p id="empty-quizzes" class="empty hidden">아직 퀴즈가 없습니다. "새 퀴즈"를 눌러 만들어 보세요.</p>
+
+      <div class="section-title"><h2>게임 기록</h2></div>
+      <div class="table-wrap">
+        <table class="list" id="game-table">
+          <thead><tr><th>일시</th><th>퀴즈</th><th>PIN</th><th>상태</th><th>참가자</th><th>문제</th><th></th></tr></thead>
+          <tbody></tbody>
+        </table>
+      </div>
+      <p id="empty-games" class="empty hidden">아직 진행한 게임이 없습니다.</p>
+    </div>
+  </main>
+
+  <script src="/js/auth.js"></script>
+  <script src="/js/ws.js"></script>
+  <script src="/js/themes.js"></script>
+  <script src="/js/index.js"></script>
+</body>
+</html>

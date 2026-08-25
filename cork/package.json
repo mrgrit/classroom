@@ -1,0 +1,26 @@
+{
+  "name": "classroom-cork",
+  "version": "1.0.0",
+  "description": "코르크(Cork) — 수업용 담벼락 게시판: 보드에 게시물 올리고 좋아요/댓글, AI 학습자료, 헤르메스 연동",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js",
+    "dev": "node --watch server.js",
+    "tunnel": "bash tunnel.sh"
+  },
+  "engines": {
+    "node": ">=18"
+  },
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.30.0",
+    "better-sqlite3": "^11.5.0",
+    "cookie-parser": "^1.4.7",
+    "dotenv": "^16.4.5",
+    "express": "^4.21.1",
+    "google-auth-library": "^9.14.2",
+    "jsonwebtoken": "^9.0.2",
+    "marked": "^4.3.0",
+    "multer": "^2.2.0",
+    "playwright-core": "^1.58.2"
+  }
+}

@@ -1,20 +1,21 @@
 node_modules/
+node_modules
 .env
 *.log
 .DS_Store
 
 # SQLite 데이터베이스 (런타임 데이터)
-padlet/data/*.db
-padlet/data/*.db-journal
-padlet/data/*.db-wal
-padlet/data/*.db-shm
-padlet/data/tunnel-url.txt
-padlet/data/uploads/
-kahoot/data/*.db
-kahoot/data/*.db-journal
-kahoot/data/*.db-wal
-kahoot/data/*.db-shm
-kahoot/data/tunnel-url.txt
-padlet/data/hermes-plugin.tgz
+cork/data/*.db
+cork/data/*.db-journal
+cork/data/*.db-wal
+cork/data/*.db-shm
+cork/data/tunnel-url.txt
+cork/data/uploads/
+buzzer/data/*.db
+buzzer/data/*.db-journal
+buzzer/data/*.db-wal
+buzzer/data/*.db-shm
+buzzer/data/tunnel-url.txt
+cork/data/hermes-plugin.tgz
 __pycache__/
 *.pyc

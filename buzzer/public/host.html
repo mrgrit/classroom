@@ -1,0 +1,41 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>진행 - 버저</title>
+  <link rel="stylesheet" href="/css/style.css">
+  <link rel="stylesheet" href="/css/themes.css">
+  <script src="https://accounts.google.com/gsi/client" async defer></script>
+</head>
+<body class="stage">
+  <header class="topbar">
+    <h1 class="logo"><a href="/">🎯 버저</a></h1>
+    <div id="user-area" class="user-area"></div>
+  </header>
+
+  <section id="login-view" class="login-view hidden">
+    <div class="login-card">
+      <h2>구글 계정으로 로그인하세요</h2>
+      <div id="google-signin-btn"></div>
+      <p id="login-error" class="error hidden"></p>
+    </div>
+  </section>
+
+  <main id="host-view" class="stage-main hidden">
+    <div class="stage-bar">
+      <span id="bar-left"></span>
+      <span class="right">
+        <span id="bar-pin"></span>
+        <button id="btn-end" class="btn btn-small btn-danger hidden">게임 종료</button>
+      </span>
+    </div>
+    <div id="stage" class="stage-center"></div>
+  </main>
+
+  <script src="/js/auth.js"></script>
+  <script src="/js/ws.js"></script>
+  <script src="/js/themes.js"></script>
+  <script src="/js/host.js"></script>
+</body>
+</html>

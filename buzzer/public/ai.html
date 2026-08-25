@@ -1,0 +1,106 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>AI 퀴즈 만들기 - 버저</title>
+  <link rel="stylesheet" href="/css/style.css">
+  <script src="https://accounts.google.com/gsi/client" async defer></script>
+</head>
+<body>
+  <header class="topbar">
+    <h1 class="logo"><a href="/">🎯 버저</a></h1>
+    <div id="user-area" class="user-area"></div>
+  </header>
+
+  <section id="login-view" class="login-view hidden">
+    <div class="login-card">
+      <h2>구글 계정으로 로그인하세요</h2>
+      <div id="google-signin-btn"></div>
+      <p id="login-error" class="error hidden"></p>
+    </div>
+  </section>
+
+  <main id="ai-view" class="container hidden">
+    <div class="section-title"><h2>✨ AI로 퀴즈 만들기</h2><a class="btn" href="/">홈으로</a></div>
+
+    <!-- 1. Ollama -->
+    <section class="card step">
+      <h3><span class="step-num">1</span> Ollama 서버</h3>
+      <div class="row">
+        <input type="text" id="ollama-url" placeholder="예: 192.168.0.10:11434 또는 http://ai.school.kr:11434">
+        <button id="connect" class="btn btn-primary">연결</button>
+      </div>
+      <div class="row">
+        <select id="model" disabled><option value="">연결하면 모델 목록이 나옵니다</option></select>
+      </div>
+      <p id="conn-status" class="hint"></p>
+    </section>
+
+    <!-- 2. 자료 -->
+    <section class="card step">
+      <h3><span class="step-num">2</span> 자료 넣기</h3>
+      <div class="tabs">
+        <button class="tab active" data-tab="text">✏️ 텍스트 붙여넣기</button>
+        <button class="tab" data-tab="file">📄 파일 (PDF·PPTX·DOCX·HWPX·TXT)</button>
+        <button class="tab" data-tab="url">🔗 URL</button>
+      </div>
+      <div id="tab-file" class="tab-body hidden">
+        <div class="row">
+          <input type="file" id="files" multiple accept=".pdf,.pptx,.docx,.hwpx,.txt,.md,.csv,.html,.htm">
+          <button id="extract" class="btn">텍스트 추출</button>
+        </div>
+        <p class="hint">여러 파일을 고르면 순서대로 이어 붙입니다. 구형 .ppt/.doc/.hwp는 .pptx/.docx/.hwpx 또는 PDF로 저장해서 올려주세요.</p>
+      </div>
+      <div id="tab-url" class="tab-body hidden">
+        <div class="row">
+          <input type="text" id="url" placeholder="https://... (웹페이지 또는 PDF 링크)">
+          <button id="fetch-url" class="btn">가져오기</button>
+        </div>
+      </div>
+      <div id="tab-text" class="tab-body">
+        <p class="hint">교재 내용, 강의 노트, 기사 등을 붙여넣으세요. 파일/URL에서 추출한 텍스트도 여기에 모입니다 — 필요 없는 부분은 지워도 됩니다.</p>
+      </div>
+      <textarea id="source" rows="12" placeholder="자료 텍스트"></textarea>
+      <div class="row between">
+        <span id="source-info" class="hint"></span>
+        <button id="clear-source" class="btn btn-small">비우기</button>
+      </div>
+    </section>
+
+    <!-- 3. 옵션 -->
+    <section class="card step">
+      <h3><span class="step-num">3</span> 생성 옵션</h3>
+      <div class="opts">
+        <label>문제 수 <select id="count"><option>5</option><option selected>10</option><option>15</option><option>20</option><option>30</option></select></label>
+        <label>난이도 <select id="difficulty"></select></label>
+        <label>언어 <select id="language"></select></label>
+      </div>
+      <input type="text" id="instructions" placeholder="추가 지시 (선택) — 예: 2장 내용 위주로, 계산 문제 포함, 용어 정의 문제 위주">
+      <div class="row">
+        <button id="generate" class="btn btn-primary btn-big">✨ 퀴즈 생성</button>
+        <button id="cancel" class="btn hidden">취소</button>
+        <span id="gen-status" class="hint"></span>
+      </div>
+    </section>
+
+    <!-- 4. 결과 -->
+    <section id="result" class="card step hidden">
+      <h3><span class="step-num">4</span> 생성 결과 <span id="result-count" class="hint"></span></h3>
+      <p class="hint">빼고 싶은 문제는 체크를 해제하세요. 퀴즈에 넣은 뒤 편집기에서 내용·제한시간·점수를 고칠 수 있습니다.</p>
+      <div id="questions"></div>
+      <div class="push">
+        <label class="radio"><input type="radio" name="push-mode" value="new" checked> 새 퀴즈로 만들기</label>
+        <input type="text" id="new-title" placeholder="퀴즈 제목" maxlength="100">
+        <label class="radio"><input type="radio" name="push-mode" value="append"> 기존 퀴즈에 추가</label>
+        <select id="append-target"></select>
+        <button id="push" class="btn btn-primary btn-big">퀴즈에 넣기 →</button>
+      </div>
+    </section>
+  </main>
+
+  <script src="/js/auth.js"></script>
+  <script src="/js/ws.js"></script>
+  <script src="/js/ai.js"></script>
+</body>
+</html>

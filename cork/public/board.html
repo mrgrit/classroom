@@ -1,0 +1,42 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>보드 - 코르크</title>
+  <link rel="stylesheet" href="/css/style.css">
+  <link rel="stylesheet" href="/css/themes.css">
+  <script src="https://accounts.google.com/gsi/client" async defer></script>
+</head>
+<body>
+  <header class="topbar">
+    <h1 class="logo"><a href="/">📌 코르크</a></h1>
+    <div id="user-area" class="user-area"></div>
+  </header>
+
+  <section id="login-view" class="login-view hidden">
+    <div class="login-card">
+      <h2>구글 계정으로 로그인하세요</h2>
+      <div id="google-signin-btn"></div>
+      <p id="login-error" class="error hidden"></p>
+    </div>
+  </section>
+
+  <main id="board-view" class="board-page hidden">
+    <div class="board-header">
+      <div>
+        <h2 id="board-title"></h2>
+        <p id="board-desc" class="board-desc"></p>
+      </div>
+      <div id="board-tools" class="board-tools"></div>
+    </div>
+
+    <!-- 컬럼들이 가로로 나열됨 (셸프) -->
+    <div id="board-columns" class="board-columns"></div>
+  </main>
+
+  <script src="/js/auth.js"></script>
+  <script src="/js/themes.js"></script>
+  <script src="/js/board.js"></script>
+</body>
+</html>

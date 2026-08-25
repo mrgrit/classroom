@@ -1,0 +1,24 @@
+{
+  "name": "classroom-buzzer",
+  "version": "1.0.0",
+  "description": "버저(Buzzer) — 실시간 퀴즈 게임, 구글 로그인으로 학생 식별",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js",
+    "dev": "node --watch server.js",
+    "tunnel": "bash tunnel.sh"
+  },
+  "license": "MIT",
+  "dependencies": {
+    "adm-zip": "^0.5.18",
+    "better-sqlite3": "^11.5.0",
+    "cookie-parser": "^1.4.7",
+    "dotenv": "^16.4.5",
+    "express": "^4.21.1",
+    "google-auth-library": "^9.14.2",
+    "jsonwebtoken": "^9.0.2",
+    "multer": "^2.2.0",
+    "pdf-parse": "^1.1.4",
+    "ws": "^8.18.0"
+  }
+}

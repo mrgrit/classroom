@@ -1,0 +1,43 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>결과 - 버저</title>
+  <link rel="stylesheet" href="/css/style.css">
+  <script src="https://accounts.google.com/gsi/client" async defer></script>
+</head>
+<body>
+  <header class="topbar">
+    <h1 class="logo"><a href="/">🎯 버저</a></h1>
+    <div id="user-area" class="user-area"></div>
+  </header>
+
+  <section id="login-view" class="login-view hidden">
+    <div class="login-card">
+      <h2>구글 계정으로 로그인하세요</h2>
+      <div id="google-signin-btn"></div>
+      <p id="login-error" class="error hidden"></p>
+    </div>
+  </section>
+
+  <main id="results-view" class="container hidden">
+    <div class="section-title">
+      <h2 id="title"></h2>
+      <span>
+        <a id="csv" class="btn" href="#">CSV 다운로드</a>
+        <a class="btn" href="/">홈으로</a>
+      </span>
+    </div>
+    <p id="meta" class="quiz-meta" style="margin-bottom:14px"></p>
+    <div class="table-wrap">
+      <table class="list" id="table"><thead></thead><tbody></tbody></table>
+    </div>
+    <p id="empty" class="empty hidden">참가자가 없습니다.</p>
+  </main>
+
+  <script src="/js/auth.js"></script>
+  <script src="/js/ws.js"></script>
+  <script src="/js/results.js"></script>
+</body>
+</html>
