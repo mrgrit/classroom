@@ -10,6 +10,7 @@
   const isComposing = (colId) => compose && compose.mode === 'compose' && compose.columnId === colId;
   const isEditing = (postId) => compose && compose.mode === 'edit' && compose.postId === postId;
   const commentDrafts = {}; // postId -> { text, files: [...] }
+  const expanded = new Set(); // 펼쳐 놓은 긴 게시물(헤르메스 기록) id
 
   const loggedIn = await Auth.init();
   if (!loggedIn) return;
@@ -115,7 +116,7 @@
     <form class="compose-form post-card color-${compose.color}" ${edit ? `data-id="${compose.postId}"` : ''}>
       ${edit ? '<div class="edit-label">✎ 게시물 수정</div>' : ''}
       <input type="text" class="compose-title" placeholder="제목 (선택)" maxlength="100" value="${escapeHtml(compose.title)}">
-      <textarea class="compose-content" placeholder="내용을 입력하세요. 캡처한 이미지를 붙여넣거나(Ctrl+V) 파일을 끌어다 놓을 수 있습니다." rows="4" maxlength="2000">${escapeHtml(compose.content)}</textarea>
+      <textarea class="compose-content" placeholder="내용을 입력하세요. 캡처한 이미지를 붙여넣거나(Ctrl+V) 파일을 끌어다 놓을 수 있습니다." rows="4" maxlength="${compose.source && compose.source !== 'web' ? 20000 : 2000}">${escapeHtml(compose.content)}</textarea>
       <div class="chips compose-chips">${chipsHtml(compose.files, 'compose')}</div>
       <div class="compose-footer">
         <div class="color-picker">
@@ -160,6 +161,23 @@
         .join('')}</div>` : ''}`;
   }
 
+  // 헤르메스가 올린 게시물 표시: 대화 자동 기록 / 메모
+  function sourceBadge(p) {
+    if (p.source === 'hermes') return '<span class="src-badge" title="헤르메스 대화 자동 기록">🤖 대화 기록</span>';
+    if (p.source === 'hermes-note') return '<span class="src-badge" title="헤르메스에서 저장한 메모">📝 메모</span>';
+    return '';
+  }
+
+  // 본문: 헤르메스 기록은 서버가 렌더한 markdown(content_html), 길면 접어서 표시
+  function contentHtml(p) {
+    if (!p.content) return '';
+    if (!p.content_html) return `<p class="post-content">${escapeHtml(p.content)}</p>`;
+    const long = p.content.length > 700;
+    const open = expanded.has(p.id);
+    return `<div class="post-content md ${long && !open ? 'collapsed' : ''}">${p.content_html}</div>` +
+      (long ? `<button type="button" class="post-expand" data-id="${p.id}">${open ? '접기 ▴' : '더 보기 ▾'}</button>` : '');
+  }
+
   function postCard(p) {
     if (isEditing(p.id)) return composeHtml();
     const { me, columns } = state;
@@ -173,16 +191,16 @@
            </select>`
         : '';
     return `
-    <article class="post-card color-${p.color}" data-id="${p.id}">
+    <article class="post-card color-${p.color}" data-id="${p.id}" id="post-${p.id}">
       <div class="post-head">
-        <span class="post-author">${canEdit ? '<span class="drag-handle post-handle" title="끌어서 이동">⠿</span>' : ''}${escapeHtml(p.author_name)}</span>
+        <span class="post-author">${canEdit ? '<span class="drag-handle post-handle" title="끌어서 이동">⠿</span>' : ''}${escapeHtml(p.author_name)}${sourceBadge(p)}</span>
         <span class="post-head-tools">
           ${moveSelect}
           ${canEdit ? `<button class="icon-btn post-edit" data-id="${p.id}" title="수정">✎</button><button class="icon-btn post-delete" data-id="${p.id}" title="삭제">✕</button>` : ''}
         </span>
       </div>
       ${p.title ? `<h4 class="post-title">${escapeHtml(p.title)}</h4>` : ''}
-      ${p.content ? `<p class="post-content">${escapeHtml(p.content)}</p>` : ''}
+      ${contentHtml(p)}
       ${attachmentsHtml(p.attachments)}
       <div class="post-foot">
         <button class="like-btn ${p.liked_by_me ? 'liked' : ''}" data-id="${p.id}">❤️ <span class="like-count">${p.like_count}</span></button>
@@ -299,6 +317,13 @@
   });
 
   $columns.addEventListener('click', async (e) => {
+    const expandBtn = e.target.closest('.post-expand');
+    if (expandBtn) {
+      const id = Number(expandBtn.dataset.id);
+      if (expanded.has(id)) expanded.delete(id); else expanded.add(id);
+      render();
+      return;
+    }
     const t = e.target;
     const btn = t.closest('button');
     if (!btn) return;
@@ -313,7 +338,7 @@
       const p = state.columns.flatMap((c) => c.posts).find((x) => x.id === Number(btn.dataset.id));
       if (!p) return;
       compose = {
-        mode: 'edit', postId: p.id, title: p.title, content: p.content, color: p.color,
+        mode: 'edit', postId: p.id, title: p.title, content: p.content, color: p.color, source: p.source || 'web',
         files: p.attachments.map((a) => ({ ...a, existing: true })), removed: [],
       };
       render();
@@ -832,5 +857,14 @@
   }
 
   await load(true);
+  // /board/1#post-5 로 들어오면(헤르메스 저장 결과 링크) 해당 카드로 스크롤 + 잠깐 강조
+  if (/^#post-\d+$/.test(location.hash)) {
+    const card = document.getElementById(location.hash.slice(1));
+    if (card) {
+      card.scrollIntoView({ block: 'center', inline: 'center' });
+      card.classList.add('highlight');
+      setTimeout(() => document.getElementById(location.hash.slice(1))?.classList.remove('highlight'), 3000);
+    }
+  }
   setInterval(load, 5000);
 })();

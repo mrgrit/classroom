@@ -15,3 +15,4 @@ kahoot/data/*.db-journal
 kahoot/data/*.db-wal
 kahoot/data/*.db-shm
 kahoot/data/tunnel-url.txt
+padlet/data/hermes-plugin.tgz

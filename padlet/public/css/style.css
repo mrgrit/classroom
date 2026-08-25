@@ -515,3 +515,64 @@ a.btn.btn-primary { color: #fff; }
 .report-body th { background: rgba(0, 0, 0, 0.03); }
 .report-body img { max-width: 100%; }
 @media (max-width: 600px) { .report-body { padding: 18px 16px; } }
+
+/* ---------- 헤르메스 연동 ---------- */
+.src-badge {
+  font-size: 10px;
+  font-weight: 600;
+  background: rgba(0, 0, 0, 0.08);
+  border-radius: 8px;
+  padding: 1px 6px;
+  margin-left: 6px;
+  color: var(--text-dim);
+  white-space: nowrap;
+}
+.post-content.md { font-size: 13.5px; line-height: 1.55; white-space: normal; }
+.post-content.md p { margin: 6px 0; }
+.post-content.md ul, .post-content.md ol { margin: 6px 0; padding-left: 20px; }
+.post-content.md h1, .post-content.md h2, .post-content.md h3, .post-content.md h4 { font-size: 14px; margin: 10px 0 4px; }
+.post-content.md code { background: rgba(0, 0, 0, 0.07); padding: 1px 4px; border-radius: 4px; font-size: 0.9em; }
+.post-content.md pre { background: rgba(255, 255, 255, 0.7); border: 1px solid rgba(0, 0, 0, 0.1); border-radius: 6px; padding: 8px 10px; overflow-x: auto; margin: 6px 0; font-size: 12px; }
+.post-content.md pre code { background: none; padding: 0; }
+.post-content.md blockquote { border-left: 3px solid rgba(0, 0, 0, 0.2); margin: 6px 0; padding: 2px 10px; color: var(--text-dim); font-size: 12px; }
+.post-content.md hr { border: none; border-top: 1px dashed rgba(0, 0, 0, 0.2); margin: 10px 0; }
+.post-content.md table { border-collapse: collapse; font-size: 12px; }
+.post-content.md th, .post-content.md td { border: 1px solid rgba(0, 0, 0, 0.15); padding: 3px 6px; }
+.post-content.md.collapsed {
+  max-height: 260px;
+  overflow: hidden;
+  -webkit-mask-image: linear-gradient(#000 70%, transparent);
+  mask-image: linear-gradient(#000 70%, transparent);
+}
+.post-expand {
+  background: none;
+  border: none;
+  color: var(--primary);
+  font-size: 12px;
+  font-weight: 700;
+  cursor: pointer;
+  padding: 4px 0;
+}
+.post-card.highlight { outline: 3px solid var(--primary); outline-offset: 2px; }
+
+.hermes-actions { display: flex; gap: 8px; margin-top: 10px; flex-wrap: wrap; }
+.hermes-box { margin-top: 12px; background: #fffbe6; border: 1px solid #f0e2a0; border-radius: 8px; padding: 12px 14px; }
+.hermes-box p { margin: 4px 0; font-size: 13px; }
+.hermes-code {
+  display: block;
+  background: #222;
+  color: #eee;
+  padding: 8px 10px;
+  border-radius: 6px;
+  font-family: ui-monospace, Menlo, Consolas, monospace;
+  font-size: 12px;
+  white-space: pre-wrap;
+  word-break: break-all;
+  margin: 4px 0 8px;
+}
+.me-card h3 { font-size: 14px; margin: 18px 0 4px; }
+.check-label { display: flex; align-items: center; gap: 6px; font-size: 13px; color: var(--text-dim); height: 36px; }
+.hermes-help { margin-top: 12px; font-size: 13px; }
+.hermes-help summary { cursor: pointer; color: var(--text-dim); }
+.hermes-help ul { margin: 6px 0 0 18px; line-height: 1.7; }
+.hermes-help code { background: rgba(0, 0, 0, 0.06); padding: 1px 5px; border-radius: 4px; }

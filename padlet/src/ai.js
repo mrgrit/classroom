@@ -125,6 +125,8 @@ function columnData(columnId) {
 function postMd(p, idx, h) {
   const lines = [`${h} ${p.title || `게시물 ${idx + 1}`}`, ''];
   lines.push(`- 작성자: ${p.author_name} · ${fmtKst(p.created_at)}${p.edited_at ? ' (수정됨)' : ''}`);
+  if (p.source === 'hermes') lines.push('- 출처: 헤르메스 대화 자동 기록');
+  else if (p.source === 'hermes-note') lines.push('- 출처: 헤르메스 메모');
   if (p.content) lines.push('', p.content);
   const files = (p.attachments || []).map((a) => a.name);
   if (files.length) lines.push('', `첨부파일: ${files.join(', ')}`);

@@ -116,6 +116,32 @@ CREATE TABLE IF NOT EXISTS ai_reports (
   created_at   TEXT NOT NULL DEFAULT (datetime('now'))
 );
 
+-- 헤르메스(Hermes Agent) 연동: 사용자당 토큰 1개(해시만 저장) + 자동 저장 컨텍스트(과목 보드·컬럼·주제)
+CREATE TABLE IF NOT EXISTS hermes_links (
+  user_id      INTEGER PRIMARY KEY REFERENCES users(id),
+  token_hash   TEXT UNIQUE,
+  board_id     INTEGER,
+  column_id    INTEGER,
+  topic        TEXT NOT NULL DEFAULT '',
+  auto_save    INTEGER NOT NULL DEFAULT 1,
+  created_at   TEXT NOT NULL DEFAULT (datetime('now')),
+  last_used_at TEXT
+);
+
+-- 헤르메스 대화 세션 ↔ 게시물 매핑 (세션 하나 = 게시물 하나, 길어지면 part를 늘려 새 게시물로 이어씀)
+CREATE TABLE IF NOT EXISTS hermes_sessions (
+  id          INTEGER PRIMARY KEY AUTOINCREMENT,
+  user_id     INTEGER NOT NULL REFERENCES users(id),
+  session_id  TEXT NOT NULL,
+  post_id     INTEGER REFERENCES posts(id) ON DELETE SET NULL,
+  part        INTEGER NOT NULL DEFAULT 1,
+  turns       INTEGER NOT NULL DEFAULT 0,
+  model       TEXT NOT NULL DEFAULT '',
+  created_at  TEXT NOT NULL DEFAULT (datetime('now')),
+  updated_at  TEXT NOT NULL DEFAULT (datetime('now')),
+  UNIQUE (user_id, session_id)
+);
+
 CREATE INDEX IF NOT EXISTS idx_ai_reports_user ON ai_reports(user_id);
 CREATE INDEX IF NOT EXISTS idx_attachments_owner ON attachments(owner_type, owner_id);
 CREATE INDEX IF NOT EXISTS idx_columns_board ON columns(board_id, position);
@@ -165,6 +191,9 @@ if (!postCols.includes('position')) {
 
 // 게시물 수정 기능 이전 DB: edited_at 추가
 if (!postCols.includes('edited_at')) db.exec('ALTER TABLE posts ADD COLUMN edited_at TEXT');
+
+// 헤르메스 연동 이전 DB: posts.source 추가 ('web' | 'hermes' 대화 기록 | 'hermes-note' 메모)
+if (!postCols.includes('source')) db.exec("ALTER TABLE posts ADD COLUMN source TEXT NOT NULL DEFAULT 'web'");
 
 module.exports = db;
 module.exports.DEFAULT_COLUMN_TITLE = DEFAULT_COLUMN_TITLE;

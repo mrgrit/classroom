@@ -13,6 +13,7 @@
 - **내 정보 페이지**(`/me`): 프로필 + **개인 Ollama 서버 연결**(주소 입력 → 연결 → 모델 선택 → 저장) + 내 AI 학습자료 목록
 - **AI 학습자료(PDF)**: 컬럼 헤더의 🤖 버튼 → 학생이 자기 Ollama 모델로 **컬럼 전체 기록(게시물+댓글)을 정리·분석한 개인화 학습자료**를 생성. 결과는 markdown으로 저장되고(`/report/:id`에서 보기) **A4 PDF로 다운로드** 가능. 수업 기록 기반 과제평가·자료 보강 용도
 - **내보내기**: 컬럼 헤더의 ⬇ 로 컬럼 전체, 보드 상단의 ⬇ 내보내기로 보드 전체를 **markdown 파일로 다운로드** (게시물·작성자·시각·첨부 파일명·댓글 포함) — 학생이 자기 AI로 꾸미고 보강하는 과제의 원본 자료
+- **헤르메스(Hermes Agent) 연동**: 학생이 `/me`에서 **연동 토큰**을 발급해 설치 명령 한 줄을 자기 헤르메스 PC에서 실행하면, 헤르메스에서 AI와 나눈 **대화(질문+답변)가 지정 컬럼의 게시물로 자동 저장**됨(세션 하나 = 게시물 하나, 제목에 날짜·주제(단원/예제)·첫 질문). `/padlet` 명령으로 과목·컬럼·주제·자동 저장을 바꾸고, MCP 도구로 메모 저장/내 기록 검색 가능. 저장된 기록은 🤖 배지 + markdown 렌더링
 - **자체 DB**: SQLite 파일 하나 (`data/padlet.db`) — 외부 DB 서버 불필요
 - 5초 폴링으로 다른 학생의 게시물이 자동으로 나타남
 
@@ -23,6 +24,23 @@
 - 결과 markdown은 `ai_reports`에 저장 — 보드/컬럼이 삭제돼도 자료는 남음(과제 증빙), 본인 + 관리자만 열람 가능
 - PDF는 `playwright-core`가 시스템 캐시(`~/.cache/ms-playwright`)의 Chromium으로 렌더링 (별도 브라우저 다운로드 없음, 한글 폰트는 시스템 폰트 사용)
 - 모델/학생이 쓴 원시 HTML은 렌더링 시 전부 이스케이프 (XSS 방지)
+
+## 헤르메스(Hermes Agent) 연동 구조
+
+학생마다 자기 PC(또는 프로필)의 헤르메스가 GPU 서버의 오픈웨이트 모델과 대화합니다. 헤르메스에는 인증이 없으므로 **신원은 모델 서버가 아니라 학생의 헤르메스 설치본(`~/.hermes`)에 넣는 패들렛 토큰**으로 확인합니다.
+
+```
+학생 PC: hermes ──(플러그인 post_llm_call 훅)──▶ POST /api/hermes/turns ┐ Authorization: Bearer <연동 토큰>
+          └──(MCP 클라이언트)──────────────────▶ POST /mcp (도구 5개)     ┘ → 서버가 토큰→학생→보드/컬럼 권한 해석
+```
+
+- **토큰**: `/me`에서 발급(재발급 시 이전 토큰 즉시 무효, 해시만 저장 `hermes_links`). 모델 서버 IP가 바뀌거나 한 서버를 여럿이 써도 무관
+- **설치**: `/me`가 보여주는 `curl -fsSL <주소>/hermes/install.sh | PADLET_TOKEN=... bash` 한 줄 — `~/.hermes/plugins/padlet`(플러그인) + `~/.hermes/skills/padlet`(스킬) 설치, `.env`에 `PADLET_URL`/`PADLET_TOKEN`, `config.yaml`에 `plugins.enabled` + `mcp_servers.padlet`(헤더는 `${PADLET_TOKEN}` 참조) 등록. 소스는 `hermes-plugin/`, 서버가 `/hermes/plugin.tgz`로 묶어 배포. 제거: `... | bash -s -- --uninstall`
+- **자동 저장은 플러그인 훅**이 담당(모델이 도구를 부르지 않아도 100% 저장, 백그라운드 전송). **MCP 도구**는 학생이 의도적으로 쓰는 것만: `padlet_status`, `padlet_list_targets`, `padlet_set_context`, `padlet_save_note`, `padlet_search_notes`
+- **저장 위치(컨텍스트)**: 서버가 학생별로 과목 보드·컬럼·주제·자동 저장 여부를 기억(`hermes_links`). 기본 대상은 학생이 **컬럼 관리자로 지정된 컬럼**(★). 지정 컬럼이 있는 보드가 하나뿐이면 자동 선택, 여러 과목이면 `/padlet 과목 <이름>`으로 선택. 지정 컬럼이 없는 보드로는 자동 저장하지 않음(명시적으로 컬럼을 골라야 함)
+- **게시물 형식**: 제목 `[2026-08-25] 3단원 예제2 — 첫 질문 요약`, 본문은 markdown(`> 🤖 헤르메스 대화 기록 · 모델 …` 헤더 + `**Q1.** … **A1.** …`). 헤르메스 세션 하나 = 게시물 하나(`hermes_sessions`), 12시간 이상 쉬거나 `/padlet 새글`이면 새 게시물, 본문 20,000자를 넘으면 `(2)` 게시물로 이어씀. 2자 이하 질문과 `/`로 시작하는 명령은 저장하지 않음
+- 헤르메스 게시물(`posts.source = 'hermes' | 'hermes-note'`)은 카드에 배지가 붙고 markdown으로 렌더링(700자 넘으면 접힘), 웹 수정 상한 20,000자, export/AI 학습자료에 출처 표시
+- **주의**: Quick Tunnel 주소가 바뀌면 학생 전원의 설정이 깨지므로 이 기능은 고정 주소(네임드 터널/도메인)에서 쓰는 것이 좋음. 같은 PC를 여럿이 쓰면 `hermes profile create <이름>`으로 프로필을 분리해 각자 토큰을 넣을 것
 
 ## 기술 스택
 
@@ -98,6 +116,8 @@ systemctl --user restart padlet-tunnel          # 터널 재시작 → URL 바�
 | 멤버 지정된 보드 접근(보기/쓰기 전부) | 지정된 학생만 | ✔ |
 | 컬럼/보드 markdown 내보내기 | 접근 가능한 보드만 | ✔ |
 | AI 학습자료 생성(자기 Ollama)/열람/PDF/삭제 | 본인 것만 | 열람은 모두 |
+| 헤르메스 연동 토큰 발급/해제, 자동 저장 위치 설정 | 본인 것만 | 본인 것만 |
+| 헤르메스 자동 저장/메모 대상 컬럼 | 글을 쓸 수 있는 컬럼만(기본: 지정 컬럼) | 모든 컬럼 |
 | 컬럼 추가/이름 변경/순서/삭제/관리자 지정 | ✕ | ✔ |
 | 관리자 지정된 컬럼에 글 작성/수정/삭제 | 지정된 학생만 | ✔ |
 | 게시물 작성 (컬럼 선택) | ✔ | ✔ |
@@ -146,10 +166,23 @@ GET    /api/reports/:id/pdf         학습자료 A4 PDF 다운로드 (본인/관
 DELETE /api/reports/:id             학습자료 삭제 (본인/관리자)
 GET    /api/columns/:id/export.md   컬럼 전체 markdown 다운로드
 GET    /api/boards/:id/export.md    보드 전체 markdown 다운로드
+GET    /api/my/hermes               헤르메스 연동 상태 + 저장 컨텍스트 + 선택 가능한 보드/컬럼
+POST   /api/my/hermes/token         연동 토큰 발급/재발급 → {token, install_command} (평문은 이때만)
+DELETE /api/my/hermes/token         연동 해제
+PUT    /api/my/hermes/context       저장 위치/주제/자동 저장 {board, column, topic, auto_save} (null = 해제)
+--- 아래는 Authorization: Bearer <연동 토큰> (헤르메스 플러그인/MCP) ---
+GET    /api/hermes/me               내 연동 상태 (?format=text 면 텍스트)
+GET    /api/hermes/targets          글을 쓸 수 있는 보드/컬럼 (managed=지정 컬럼)
+PUT    /api/hermes/context          저장 위치/주제/자동 저장 (board/column은 이름 일부 또는 id)
+POST   /api/hermes/turns            대화 한 턴 저장 {session_id, user_message, assistant_response, model, new_post}
+POST   /api/hermes/notes            메모 게시물 저장 {title, content, color}
+GET    /api/hermes/search?q=        내 게시물 검색
+POST   /mcp                         MCP 서버 (Streamable HTTP, 무상태)
+GET    /hermes/install.sh           설치 스크립트 (주소 자동 치환), /hermes/plugin.tgz 플러그인 묶음
 ```
 
 멤버가 지정된 보드는 상세/글쓰기/수정/이동/삭제/좋아요/댓글/내보내기/AI 생성 전부에서 비멤버에게 403을 반환합니다.
 
 ## DB 스키마
 
-`users` / `boards` / `columns` / `column_managers` / `board_members` / `posts` / `likes` / `comments` / `attachments` / `ai_settings` / `ai_reports` 11개 테이블, `src/db.js`에서 서버 시작 시 자동 생성·마이그레이션됩니다(컬럼 기능 이전 DB는 보드마다 기본 컬럼 "게시물"이 생기고 기존 게시물이 배정됨, `posts.position`이 없던 DB는 기존 최신순으로 번호가 매겨짐). DB 파일은 `data/padlet.db`, 첨부파일은 `data/uploads/`에 저장되며 git에는 포함되지 않습니다. `PADLET_DATA_DIR` 환경변수로 데이터 위치를 바꿀 수 있습니다.
+`users` / `boards` / `columns` / `column_managers` / `board_members` / `posts` / `likes` / `comments` / `attachments` / `ai_settings` / `ai_reports` / `hermes_links` / `hermes_sessions` 13개 테이블, `src/db.js`에서 서버 시작 시 자동 생성·마이그레이션됩니다(컬럼 기능 이전 DB는 보드마다 기본 컬럼 "게시물"이 생기고 기존 게시물이 배정됨, `posts.position`이 없던 DB는 기존 최신순으로 번호가 매겨짐). DB 파일은 `data/padlet.db`, 첨부파일은 `data/uploads/`에 저장되며 git에는 포함되지 않습니다. `PADLET_DATA_DIR` 환경변수로 데이터 위치를 바꿀 수 있습니다.

@@ -1,0 +1,6 @@
+name: padlet
+version: 1.0.0
+description: "Classroom Padlet 연동 — 헤르메스 대화(질문+답변)를 내 컬럼에 자동 저장하고, /padlet 명령으로 과목·컬럼·주제·자동 저장을 설정합니다."
+author: "classroom (mrgrit@ync.ac.kr)"
+hooks:
+  - post_llm_call

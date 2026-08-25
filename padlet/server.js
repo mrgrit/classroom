@@ -12,10 +12,18 @@ const {
 const uploads = require('./src/uploads');
 const ai = require('./src/ai');
 const report = require('./src/report');
+const {
+  boardMembers, canAccessBoard, PRIVATE_MSG,
+  columnManagers, isColumnManager, canPostIn, canEditPost, MANAGED_MSG,
+} = require('./src/perm');
+const hermes = require('./src/hermes');
+const mcp = require('./src/mcp');
+const fs = require('fs');
+const { execFileSync } = require('child_process');
 
 const app = express();
 app.set('trust proxy', 1); // Cloudflare Tunnel 등 리버스 프록시 뒤에서 https 인식
-app.use(express.json());
+app.use(express.json({ limit: '1mb' }));
 app.use(cookieParser());
 app.use(express.static(path.join(__dirname, 'public')));
 
@@ -53,19 +61,6 @@ app.get('/api/me', requireAuth, (req, res) => {
 
 app.post('/api/uploads', requireAuth, uploads.handleUpload);
 app.get('/uploads/:name', requireAuth, uploads.serveFile);
-
-// ---------- 보드 접근 권한 ----------
-// 보드에 멤버가 지정되어 있으면 admin + 등록된 이메일만 접근(보기/쓰기) 가능. 지정이 없으면 로그인한 누구나
-const boardMemberStmt = db.prepare('SELECT email FROM board_members WHERE board_id = ? ORDER BY email');
-function boardMembers(boardId) {
-  return boardMemberStmt.all(boardId).map((r) => r.email);
-}
-function canAccessBoard(user, boardId) {
-  if (user.admin) return true;
-  const members = boardMembers(boardId);
-  return !members.length || members.includes((user.email || '').toLowerCase());
-}
-const PRIVATE_MSG = '이 보드는 지정된 학생만 접근할 수 있습니다.';
 
 // ---------- 보드 ----------
 
@@ -136,26 +131,6 @@ app.delete('/api/boards/:id', requireAdmin, (req, res) => {
   res.json({ ok: true });
 });
 
-// ---------- 컬럼 권한 ----------
-// 컬럼에 관리자가 지정되어 있으면 admin + 지정 관리자만 글 작성/수정/삭제/이동 가능.
-// 지정이 없으면 누구나 작성, 본인 글만 수정/삭제 (admin은 모두)
-const managerStmt = db.prepare('SELECT email FROM column_managers WHERE column_id = ? ORDER BY email');
-function columnManagers(columnId) {
-  return managerStmt.all(columnId).map((r) => r.email);
-}
-function isColumnManager(user, columnId) {
-  return user.admin || columnManagers(columnId).includes((user.email || '').toLowerCase());
-}
-function canPostIn(user, columnId) {
-  return user.admin || !columnManagers(columnId).length || isColumnManager(user, columnId);
-}
-function canEditPost(user, post) {
-  if (user.admin) return true;
-  if (columnManagers(post.column_id).length) return isColumnManager(user, post.column_id);
-  return post.user_id === user.uid;
-}
-const MANAGED_MSG = '이 컬럼은 지정된 관리자만 글을 쓰거나 고칠 수 있습니다.';
-
 // 보드 상세: 컬럼별 게시물 + 좋아요 수/내 좋아요 여부 + 댓글까지 한 번에
 app.get('/api/boards/:id', requireAuth, (req, res) => {
   const board = db
@@ -197,6 +172,7 @@ app.get('/api/boards/:id', requireAuth, (req, res) => {
     uploads.attachTo('comment', post.comments);
     post.is_mine = post.user_id === req.user.uid;
     post.can_edit = canEditPost(req.user, post);
+    if (post.source && post.source !== 'web') post.content_html = report.renderMarkdown(post.content); // 헤르메스 기록은 markdown
     (byColumn.get(post.column_id) || byColumn.get(columns[0]?.id))?.push(post);
   }
   for (const col of columns) col.posts = byColumn.get(col.id);
@@ -344,7 +320,8 @@ app.put('/api/posts/:id', requireAuth, (req, res) => {
   if (req.body.content !== undefined) content = String(req.body.content).trim();
   if (req.body.title !== undefined) title = String(req.body.title).trim().slice(0, 100);
   if (req.body.color !== undefined && POST_COLORS.includes(req.body.color)) color = req.body.color;
-  if (content.length > 2000) return res.status(400).json({ error: '내용은 2000자 이하로 입력하세요.' });
+  const maxLen = post.source && post.source !== 'web' ? hermes.MAX_CONTENT : 2000; // 헤르메스 기록은 대화가 길어 상한이 큼
+  if (content.length > maxLen) return res.status(400).json({ error: `내용은 ${maxLen}자 이하로 입력하세요.` });
 
   const removeIds = Array.isArray(req.body.remove_attachment_ids) ? req.body.remove_attachment_ids.map(Number) : [];
   const addIds = Array.isArray(req.body.attachment_ids) ? req.body.attachment_ids : [];
@@ -610,6 +587,116 @@ app.get('/api/boards/:id/export.md', requireAuth, (req, res) => {
   res.setHeader('Content-Type', 'text/markdown; charset=utf-8');
   setDownloadName(res, `${board.title}.md`);
   res.send(markdown);
+});
+
+// ---------- 헤르메스(Hermes Agent) 연동 ----------
+// 웹(로그인 쿠키)은 내 정보 페이지용, /api/hermes/* 와 /mcp 는 플러그인·MCP 클라이언트용(Bearer 연동 토큰)
+
+const baseUrl = (req) => `${req.protocol}://${req.get('host')}`;
+const installCommand = (req, token) => `curl -fsSL ${baseUrl(req)}/hermes/install.sh | PADLET_TOKEN=${token || '<토큰>'} bash`;
+
+app.get('/api/my/hermes', requireAuth, (req, res) => {
+  const link = hermes.getLink(req.user.uid);
+  res.json({ ...hermes.getContext(req.user), created_at: link ? link.created_at : null, install_command: installCommand(req, null) });
+});
+
+// 토큰 발급/재발급 — 평문은 이 응답에서만 볼 수 있음
+app.post('/api/my/hermes/token', requireAuth, (req, res) => {
+  const token = hermes.issueToken(req.user.uid);
+  res.json({ token, install_command: installCommand(req, token) });
+});
+
+app.delete('/api/my/hermes/token', requireAuth, (req, res) => {
+  hermes.revokeToken(req.user.uid);
+  res.json({ ok: true });
+});
+
+app.put('/api/my/hermes/context', requireAuth, (req, res) => {
+  try {
+    res.json(hermes.setContext(req.user, req.body));
+  } catch (err) {
+    res.status(err.status || 500).json({ error: err.message });
+  }
+});
+
+function requireHermes(req, res, next) {
+  const user = hermes.authenticate(req.get('authorization'));
+  if (!user) return res.status(401).json({ error: '헤르메스 연동 토큰이 없거나 유효하지 않습니다. 패들렛 내 정보 페이지에서 토큰을 다시 발급하세요.' });
+  req.user = user;
+  next();
+}
+const hermesError = (res, err) => res.status(err.status || 500).json({ error: err.message, code: err.code });
+
+app.get('/api/hermes/me', requireHermes, (req, res) => {
+  const ctx = hermes.getContext(req.user);
+  const status_text = hermes.statusText(ctx, req.user);
+  if (req.query.format === 'text') return res.type('text/plain').send(status_text + '\n');
+  res.json({ user: { name: req.user.name, email: req.user.email, admin: req.user.admin }, ...ctx, status_text });
+});
+
+app.get('/api/hermes/targets', requireHermes, (req, res) => res.json(hermes.listTargets(req.user)));
+
+app.put('/api/hermes/context', requireHermes, (req, res) => {
+  try {
+    const ctx = hermes.setContext(req.user, req.body);
+    res.json({ ...ctx, status_text: hermes.statusText(ctx, req.user) });
+  } catch (err) {
+    hermesError(res, err);
+  }
+});
+
+// 플러그인 훅이 매 턴 호출: {session_id, user_message, assistant_response, model, platform, new_post}
+app.post('/api/hermes/turns', requireHermes, (req, res) => {
+  try {
+    res.json(hermes.saveTurn(req.user, req.body));
+  } catch (err) {
+    hermesError(res, err);
+  }
+});
+
+app.post('/api/hermes/notes', requireHermes, (req, res) => {
+  try {
+    res.status(201).json(hermes.saveNote(req.user, req.body));
+  } catch (err) {
+    hermesError(res, err);
+  }
+});
+
+app.get('/api/hermes/search', requireHermes, (req, res) => {
+  try {
+    res.json(hermes.searchNotes(req.user, req.query.q, req.query.limit));
+  } catch (err) {
+    hermesError(res, err);
+  }
+});
+
+// MCP 서버 (Streamable HTTP, 무상태). 도구: padlet_status / list_targets / set_context / save_note / search_notes
+app.post('/mcp', requireHermes, (req, res) => mcp.handle(req, res));
+app.all('/mcp', (req, res) => res.status(405).json({ error: 'POST만 지원합니다.' }));
+
+// 플러그인 배포: 설치 스크립트(주소 치환) + 플러그인 디렉토리 tarball(소스가 바뀌면 다시 묶음)
+const PLUGIN_DIR = path.join(__dirname, 'hermes-plugin');
+const PLUGIN_TGZ = path.join(process.env.PADLET_DATA_DIR || path.join(__dirname, 'data'), 'hermes-plugin.tgz');
+function pluginTarball() {
+  let newest = 0;
+  const walk = (dir) => {
+    for (const e of fs.readdirSync(dir, { withFileTypes: true })) {
+      if (e.name === '__pycache__') continue;
+      const p = path.join(dir, e.name);
+      if (e.isDirectory()) walk(p);
+      else newest = Math.max(newest, fs.statSync(p).mtimeMs);
+    }
+  };
+  walk(PLUGIN_DIR);
+  if (!fs.existsSync(PLUGIN_TGZ) || fs.statSync(PLUGIN_TGZ).mtimeMs < newest) {
+    execFileSync('tar', ['--exclude=__pycache__', '--exclude=install.sh', '-czf', PLUGIN_TGZ, '-C', PLUGIN_DIR, '.']);
+  }
+  return PLUGIN_TGZ;
+}
+app.get('/hermes/plugin.tgz', (req, res) => res.sendFile(pluginTarball()));
+app.get('/hermes/install.sh', (req, res) => {
+  const script = fs.readFileSync(path.join(PLUGIN_DIR, 'install.sh'), 'utf8').replace(/__PADLET_URL__/g, baseUrl(req));
+  res.type('text/x-shellscript').send(script);
 });
 
 // ---------- 페이지 라우팅 ----------

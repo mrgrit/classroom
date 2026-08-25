@@ -12,6 +12,7 @@
     "node": ">=18"
   },
   "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.30.0",
     "better-sqlite3": "^11.5.0",
     "cookie-parser": "^1.4.7",
     "dotenv": "^16.4.5",
