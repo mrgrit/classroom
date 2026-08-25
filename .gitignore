@@ -16,3 +16,5 @@ kahoot/data/*.db-wal
 kahoot/data/*.db-shm
 kahoot/data/tunnel-url.txt
 padlet/data/hermes-plugin.tgz
+__pycache__/
+*.pyc
