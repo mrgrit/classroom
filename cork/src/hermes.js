@@ -250,7 +250,14 @@ function insertPost({ user, columnId, boardId, title, content, color, source }) 
   return info.lastInsertRowid;
 }
 
-// 헤르메스 한 턴(질문+답변) 저장. 세션 매핑에 따라 기존 게시물에 이어쓰거나 새 게시물 생성
+// 대화 기록 헤더에 쓸 플랫폼 이름 (헤르메스 플러그인은 platform을 안 보내므로 기본 헤르메스)
+function platformLabel(platform) {
+  const p = String(platform || '').trim().slice(0, 30);
+  if (p === 'claude-code') return 'Claude Code';
+  return p && p !== 'hermes' ? p : '헤르메스';
+}
+
+// AI 에이전트 한 턴(질문+답변) 저장. 세션 매핑에 따라 기존 게시물에 이어쓰거나 새 게시물 생성
 function saveTurn(user, input = {}) {
   const sessionId = String(input.session_id || '').trim().slice(0, 100);
   const userMessage = String(input.user_message || '').trim();
@@ -297,7 +304,7 @@ function saveTurn(user, input = {}) {
       }
     }
     if (!post) {
-      const header = `> 🤖 헤르메스 대화 기록${model ? ` · 모델 ${model}` : ''} · ${fmtKst(new Date().toISOString())} (KST)`;
+      const header = `> 🤖 ${platformLabel(input.platform)} 대화 기록${model ? ` · 모델 ${model}` : ''} · ${fmtKst(new Date().toISOString())} (KST)`;
       const title = makeTitle(ctx.topic, userMessage, part);
       const id = insertPost({
         user, columnId: ctx.column.id, boardId: ctx.board.id, title,

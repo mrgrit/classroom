@@ -66,6 +66,7 @@ const Auth = {
     area.innerHTML = `
       ${avatar}
       <span class="user-name">${escapeHtml(this.me.name)}${this.me.admin ? ' <span class="badge">관리자</span>' : ''}</span>
+      ${this.me.admin ? '<a class="btn btn-small" href="/admin">🛠 관리</a>' : ''}
       <a class="btn btn-small" href="/me">내 정보</a>
       <button id="logout-btn" class="btn btn-small">로그아웃</button>
     `;

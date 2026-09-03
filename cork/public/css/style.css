@@ -589,3 +589,33 @@ body.themed .login-card { color: var(--text); }
 .hermes-help summary { cursor: pointer; color: var(--text-dim); }
 .hermes-help ul { margin: 6px 0 0 18px; line-height: 1.7; }
 .hermes-help code { background: rgba(0, 0, 0, 0.06); padding: 1px 5px; border-radius: 4px; }
+
+/* ---------- 글쓰기 양식 (게시물 작성 폼) ---------- */
+.compose-form .compose-template {
+  font: inherit;
+  font-size: 13px;
+  padding: 7px 8px;
+  border: 1px solid rgba(0, 0, 0, 0.15);
+  border-radius: 6px;
+  background: rgba(255, 255, 255, 0.85);
+  width: 100%;
+}
+.compose-field-label { display: flex; flex-direction: column; gap: 3px; font-size: 12px; font-weight: 700; color: var(--text-dim); }
+.compose-field-label textarea { font-weight: 400; }
+.post-content .tpl-label { font-weight: 700; }
+
+/* ---------- 관리 페이지: 글쓰기 양식 편집 ---------- */
+.tpl-toolbar { margin-top: 10px; }
+.tpl-row { display: flex; align-items: center; gap: 10px; padding: 10px 0; border-bottom: 1px solid var(--border); }
+.tpl-row-main { flex: 1; min-width: 0; }
+.tpl-row-main .hint { font-size: 12px; }
+.tpl-editor { margin-top: 14px; border: 1px solid var(--border); border-radius: 8px; padding: 14px 16px; background: var(--bg); }
+.tpl-editor h3 { font-size: 15px; }
+.tpl-editor h4 { font-size: 13px; margin: 14px 0 2px; }
+.tpl-editor input[type="text"] { font: inherit; font-size: 14px; padding: 8px 10px; border: 1px solid var(--border); border-radius: 6px; width: 100%; background: var(--surface); }
+.tpl-field-row { display: flex; gap: 6px; align-items: center; margin-top: 6px; }
+.tpl-field-row .tpl-f-label { flex: 2; }
+.tpl-field-row .tpl-f-ph { flex: 3; }
+.tpl-editor .tpl-f-add { margin-top: 8px; }
+.tpl-editor .modal-actions { margin-top: 12px; }
+.tpl-status:empty { display: none; }

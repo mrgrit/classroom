@@ -455,6 +455,55 @@ app.delete('/api/comments/:id', requireAuth, (req, res) => {
   res.json({ ok: true });
 });
 
+// ---------- 글쓰기 양식 (관리자가 만들고, 학생이 게시물 작성 시 선택) ----------
+
+const MAX_TEMPLATE_FIELDS = 20;
+
+// {name, description, fields:[{label, placeholder}]} 검증·정리. 문제가 있으면 {error}
+function normalizeTemplate(body) {
+  const name = String(body.name || '').trim().slice(0, 50);
+  if (!name) return { error: '양식 이름을 입력하세요.' };
+  const description = String(body.description || '').trim().slice(0, 200);
+  const fields = (Array.isArray(body.fields) ? body.fields : [])
+    .map((f) => ({
+      label: String((f && f.label) || '').trim().slice(0, 50),
+      placeholder: String((f && f.placeholder) || '').trim().slice(0, 200),
+    }))
+    .filter((f) => f.label);
+  if (!fields.length) return { error: '항목을 하나 이상 입력하세요.' };
+  if (fields.length > MAX_TEMPLATE_FIELDS) return { error: `항목은 최대 ${MAX_TEMPLATE_FIELDS}개까지 만들 수 있습니다.` };
+  return { name, description, fields };
+}
+
+app.get('/api/templates', requireAuth, (req, res) => {
+  const rows = db.prepare('SELECT * FROM templates ORDER BY id').all();
+  res.json(rows.map((t) => ({ ...t, fields: JSON.parse(t.fields) })));
+});
+
+app.post('/api/templates', requireAdmin, (req, res) => {
+  const t = normalizeTemplate(req.body);
+  if (t.error) return res.status(400).json({ error: t.error });
+  const info = db
+    .prepare('INSERT INTO templates (name, description, fields) VALUES (?, ?, ?)')
+    .run(t.name, t.description, JSON.stringify(t.fields));
+  res.status(201).json({ id: info.lastInsertRowid });
+});
+
+app.put('/api/templates/:id', requireAdmin, (req, res) => {
+  const row = db.prepare('SELECT id FROM templates WHERE id = ?').get(req.params.id);
+  if (!row) return res.status(404).json({ error: '양식이 없습니다.' });
+  const t = normalizeTemplate(req.body);
+  if (t.error) return res.status(400).json({ error: t.error });
+  db.prepare("UPDATE templates SET name = ?, description = ?, fields = ?, updated_at = datetime('now') WHERE id = ?")
+    .run(t.name, t.description, JSON.stringify(t.fields), row.id);
+  res.json({ ok: true });
+});
+
+app.delete('/api/templates/:id', requireAdmin, (req, res) => {
+  db.prepare('DELETE FROM templates WHERE id = ?').run(req.params.id);
+  res.json({ ok: true });
+});
+
 // ---------- 내 AI 설정 (학생별 Ollama) ----------
 
 app.get('/api/my/ai', requireAuth, (req, res) => {
@@ -608,21 +657,28 @@ app.get('/api/boards/:id/export.md', requireAuth, (req, res) => {
   res.send(markdown);
 });
 
-// ---------- 헤르메스(Hermes Agent) 연동 ----------
-// 웹(로그인 쿠키)은 내 정보 페이지용, /api/hermes/* 와 /mcp 는 플러그인·MCP 클라이언트용(Bearer 연동 토큰)
+// ---------- AI 에이전트(헤르메스 · Claude Code) 연동 ----------
+// 웹(로그인 쿠키)은 내 정보 페이지용, /api/hermes/* 와 /mcp 는 플러그인·훅·MCP 클라이언트용(Bearer 연동 토큰)
+// 같은 토큰·API를 헤르메스 플러그인과 Claude Code 훅이 함께 사용한다.
 
 const baseUrl = (req) => `${req.protocol}://${req.get('host')}`;
 const installCommand = (req, token) => `curl -fsSL ${baseUrl(req)}/hermes/install.sh | CORK_TOKEN=${token || '<토큰>'} bash`;
+const claudeInstallCommand = (req, token) => `curl -fsSL ${baseUrl(req)}/claude/install.sh | CORK_TOKEN=${token || '<토큰>'} bash`;
 
 app.get('/api/my/hermes', requireAuth, (req, res) => {
   const link = hermes.getLink(req.user.uid);
-  res.json({ ...hermes.getContext(req.user), created_at: link ? link.created_at : null, install_command: installCommand(req, null) });
+  res.json({
+    ...hermes.getContext(req.user),
+    created_at: link ? link.created_at : null,
+    install_command: installCommand(req, null),
+    install_command_claude: claudeInstallCommand(req, null),
+  });
 });
 
 // 토큰 발급/재발급 — 평문은 이 응답에서만 볼 수 있음
 app.post('/api/my/hermes/token', requireAuth, (req, res) => {
   const token = hermes.issueToken(req.user.uid);
-  res.json({ token, install_command: installCommand(req, token) });
+  res.json({ token, install_command: installCommand(req, token), install_command_claude: claudeInstallCommand(req, token) });
 });
 
 app.delete('/api/my/hermes/token', requireAuth, (req, res) => {
@@ -718,6 +774,15 @@ app.get('/hermes/install.sh', (req, res) => {
   res.type('text/x-shellscript').send(script);
 });
 
+// Claude Code 연동 배포: 설치 스크립트(주소 치환) + 저장 훅 + /cork 슬래시 명령
+const CLAUDE_PLUGIN_DIR = path.join(__dirname, 'claude-plugin');
+app.get('/claude/install.sh', (req, res) => {
+  const script = fs.readFileSync(path.join(CLAUDE_PLUGIN_DIR, 'install.sh'), 'utf8').replace(/__CORK_URL__/g, baseUrl(req));
+  res.type('text/x-shellscript').send(script);
+});
+app.get('/claude/save_turn.py', (req, res) => res.type('text/x-python').sendFile(path.join(CLAUDE_PLUGIN_DIR, 'save_turn.py')));
+app.get('/claude/cork.md', (req, res) => res.type('text/markdown').sendFile(path.join(CLAUDE_PLUGIN_DIR, 'commands', 'cork.md')));
+
 // ---------- 페이지 라우팅 ----------
 
 app.get('/board/:id', (req, res) => {
@@ -726,6 +791,10 @@ app.get('/board/:id', (req, res) => {
 
 app.get('/me', (req, res) => {
   res.sendFile(path.join(__dirname, 'public', 'me.html'));
+});
+
+app.get('/admin', (req, res) => {
+  res.sendFile(path.join(__dirname, 'public', 'admin.html'));
 });
 
 app.get('/report/:id', (req, res) => {

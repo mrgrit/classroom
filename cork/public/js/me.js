@@ -154,11 +154,12 @@
   $h('hermes-board').addEventListener('change', fillHermesColumns);
 
   $h('hermes-issue').addEventListener('click', async () => {
-    if (hermesData?.linked && !confirm('토큰을 재발급하면 이전 토큰으로 연결된 헤르메스는 더 이상 저장하지 못합니다. 계속할까요?')) return;
+    if (hermesData?.linked && !confirm('토큰을 재발급하면 이전 토큰으로 연결된 헤르메스/Claude Code는 더 이상 저장하지 못합니다. 계속할까요?')) return;
     try {
       const r = await api('/api/my/hermes/token', { method: 'POST' });
       $h('hermes-token').textContent = r.token;
       $h('hermes-install').textContent = r.install_command;
+      $h('claude-install').textContent = r.install_command_claude;
       $h('hermes-token-box').classList.remove('hidden');
       await loadHermes();
     } catch (err) {
@@ -167,7 +168,7 @@
   });
 
   $h('hermes-revoke').addEventListener('click', async () => {
-    if (!confirm('헤르메스 연동을 해제할까요? (토큰이 무효화되고, 저장 위치 설정은 유지됩니다)')) return;
+    if (!confirm('에이전트 연동을 해제할까요? (토큰이 무효화되고, 저장 위치 설정은 유지됩니다)')) return;
     try {
       await api('/api/my/hermes/token', { method: 'DELETE' });
       $h('hermes-token-box').classList.add('hidden');
@@ -177,15 +178,18 @@
     }
   });
 
-  $h('hermes-copy-install').addEventListener('click', async () => {
-    try {
-      await navigator.clipboard.writeText($h('hermes-install').textContent);
-      $h('hermes-copy-install').textContent = '복사됨 ✓';
-      setTimeout(() => { $h('hermes-copy-install').textContent = '복사'; }, 1500);
-    } catch {
-      alert('클립보드 복사에 실패했습니다. 직접 선택해서 복사하세요.');
-    }
-  });
+  // 설치 명령 복사 버튼 (헤르메스 / Claude Code)
+  for (const [btnId, codeId] of [['hermes-copy-install', 'hermes-install'], ['claude-copy-install', 'claude-install']]) {
+    $h(btnId).addEventListener('click', async () => {
+      try {
+        await navigator.clipboard.writeText($h(codeId).textContent);
+        $h(btnId).textContent = '복사됨 ✓';
+        setTimeout(() => { $h(btnId).textContent = '복사'; }, 1500);
+      } catch {
+        alert('클립보드 복사에 실패했습니다. 직접 선택해서 복사하세요.');
+      }
+    });
+  }
 
   $h('hermes-save').addEventListener('click', async () => {
     const boardId = $h('hermes-board').value;

@@ -149,6 +149,16 @@ CREATE TABLE IF NOT EXISTS hermes_sessions (
   UNIQUE (user_id, session_id)
 );
 
+-- 글쓰기 양식: 관리자가 만들고, 학생이 게시물 작성 시 선택(선택 안 하면 자유 작성)
+CREATE TABLE IF NOT EXISTS templates (
+  id          INTEGER PRIMARY KEY AUTOINCREMENT,
+  name        TEXT NOT NULL,
+  description TEXT NOT NULL DEFAULT '',
+  fields      TEXT NOT NULL,  -- JSON [{label, placeholder}]
+  created_at  TEXT NOT NULL DEFAULT (datetime('now')),
+  updated_at  TEXT
+);
+
 CREATE INDEX IF NOT EXISTS idx_ai_reports_user ON ai_reports(user_id);
 CREATE INDEX IF NOT EXISTS idx_attachments_owner ON attachments(owner_type, owner_id);
 CREATE INDEX IF NOT EXISTS idx_columns_board ON columns(board_id, position);

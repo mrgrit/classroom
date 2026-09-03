@@ -1,0 +1,40 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>관리 - 코르크</title>
+  <link rel="stylesheet" href="/css/style.css">
+  <script src="https://accounts.google.com/gsi/client" async defer></script>
+</head>
+<body>
+  <header class="topbar">
+    <h1 class="logo"><a href="/">📌 코르크</a></h1>
+    <div id="user-area" class="user-area"></div>
+  </header>
+
+  <section id="login-view" class="login-view hidden">
+    <div class="login-card">
+      <h2>구글 계정으로 로그인하세요</h2>
+      <div id="google-signin-btn"></div>
+      <p id="login-error" class="error hidden"></p>
+    </div>
+  </section>
+
+  <main id="admin-view" class="container hidden">
+    <h2 class="section-title">관리</h2>
+
+    <section class="me-card" id="tpl-card">
+      <h2>📋 글쓰기 양식</h2>
+      <p class="hint">학생이 게시물을 쓸 때 고를 수 있는 양식입니다. 양식을 고르면 항목별 입력칸이 나오고, 고르지 않으면 지금처럼 자유롭게 씁니다.</p>
+      <div id="tpl-list"></div>
+      <p id="tpl-empty" class="empty hidden">아직 양식이 없습니다. 아래 버튼으로 만들어보세요. (예: 주간업무보고 — 이번 주 한 일 / 다음 주 계획 / 이슈)</p>
+      <div class="tpl-toolbar"><button id="tpl-new" class="btn btn-primary">＋ 새 양식 만들기</button></div>
+      <div id="tpl-editor" class="tpl-editor hidden"></div>
+    </section>
+  </main>
+
+  <script src="/js/auth.js"></script>
+  <script src="/js/admin.js"></script>
+</body>
+</html>

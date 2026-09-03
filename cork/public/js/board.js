@@ -12,6 +12,13 @@
   const commentDrafts = {}; // postId -> { text, files: [...] }
   const expanded = new Set(); // 펼쳐 놓은 긴 게시물(헤르메스 기록) id
 
+  // 글쓰기 양식 (관리자가 /admin 에서 만든 것). 첫 작성 시 한 번만 불러옴
+  let templatesCache = null;
+  async function loadTemplates() {
+    if (templatesCache) return;
+    try { templatesCache = await api('/api/templates'); } catch { templatesCache = []; }
+  }
+
   const loggedIn = await Auth.init();
   if (!loggedIn) return;
   document.getElementById('board-view').classList.remove('hidden');
@@ -113,11 +120,26 @@
 
   function composeHtml() {
     const edit = compose.mode === 'edit';
+    const tpl = !edit && compose.template;
+    // 양식 선택 (새 글 작성 시, 양식이 하나라도 있을 때만). 선택 안 하면 자유 작성
+    const tplSelect = !edit && templatesCache && templatesCache.length
+      ? `<select class="compose-template" title="글쓰기 양식 선택">
+           <option value="">📝 양식 없이 자유 작성</option>
+           ${templatesCache.map((t) => `<option value="${t.id}" ${tpl && tpl.id === t.id ? 'selected' : ''}>📋 ${escapeHtml(t.name)}${t.description ? ` — ${escapeHtml(t.description)}` : ''}</option>`).join('')}
+         </select>`
+      : '';
+    const bodyArea = tpl
+      ? tpl.fields.map((f, i) => `
+        <label class="compose-field-label">${escapeHtml(f.label)}
+          <textarea class="compose-field" data-idx="${i}" rows="2" maxlength="2000" placeholder="${escapeHtml(f.placeholder || '')}">${escapeHtml(compose.fieldValues[i] || '')}</textarea>
+        </label>`).join('')
+      : `<textarea class="compose-content" placeholder="내용을 입력하세요. 캡처한 이미지를 붙여넣거나(Ctrl+V) 파일을 끌어다 놓을 수 있습니다." rows="4" maxlength="${compose.source && compose.source !== 'web' ? 20000 : 2000}">${escapeHtml(compose.content)}</textarea>`;
     return `
     <form class="compose-form post-card color-${compose.color}" ${edit ? `data-id="${compose.postId}"` : ''}>
       ${edit ? '<div class="edit-label">✎ 게시물 수정</div>' : ''}
+      ${tplSelect}
       <input type="text" class="compose-title" placeholder="제목 (선택)" maxlength="100" value="${escapeHtml(compose.title)}">
-      <textarea class="compose-content" placeholder="내용을 입력하세요. 캡처한 이미지를 붙여넣거나(Ctrl+V) 파일을 끌어다 놓을 수 있습니다." rows="4" maxlength="${compose.source && compose.source !== 'web' ? 20000 : 2000}">${escapeHtml(compose.content)}</textarea>
+      ${bodyArea}
       <div class="chips compose-chips">${chipsHtml(compose.files, 'compose')}</div>
       <div class="compose-footer">
         <div class="color-picker">
@@ -164,15 +186,19 @@
 
   // 헤르메스가 올린 게시물 표시: 대화 자동 기록 / 메모
   function sourceBadge(p) {
-    if (p.source === 'hermes') return '<span class="src-badge" title="헤르메스 대화 자동 기록">🤖 대화 기록</span>';
-    if (p.source === 'hermes-note') return '<span class="src-badge" title="헤르메스에서 저장한 메모">📝 메모</span>';
+    if (p.source === 'hermes') return '<span class="src-badge" title="AI 에이전트(헤르메스·Claude Code) 대화 자동 기록">🤖 대화 기록</span>';
+    if (p.source === 'hermes-note') return '<span class="src-badge" title="AI 에이전트에서 저장한 메모">📝 메모</span>';
     return '';
   }
 
   // 본문: 헤르메스 기록은 서버가 렌더한 markdown(content_html), 길면 접어서 표시
+  // 일반 글은 양식 항목 표시(【항목】 한 줄)만 굵게 강조
   function contentHtml(p) {
     if (!p.content) return '';
-    if (!p.content_html) return `<p class="post-content">${escapeHtml(p.content)}</p>`;
+    if (!p.content_html) {
+      const html = escapeHtml(p.content).replace(/^【([^】\n]{1,50})】$/gm, '<b class="tpl-label">【$1】</b>');
+      return `<p class="post-content">${html}</p>`;
+    }
     const long = p.content.length > 700;
     const open = expanded.has(p.id);
     return `<div class="post-content md ${long && !open ? 'collapsed' : ''}">${p.content_html}</div>` +
@@ -336,7 +362,8 @@
     if (!btn) return;
 
     if (btn.classList.contains('col-add-post')) {
-      compose = { mode: 'compose', columnId: Number(btn.dataset.col), title: '', content: '', color: 'yellow', files: [] };
+      await loadTemplates();
+      compose = { mode: 'compose', columnId: Number(btn.dataset.col), title: '', content: '', color: 'yellow', files: [], template: null, fieldValues: [] };
       render();
       $columns.querySelector('.compose-content')?.focus();
       return;
@@ -456,14 +483,25 @@
       }
     } else if (form.classList.contains('compose-form')) {
       if (compose.files.some((f) => f.uploading)) return alert('파일 업로드가 끝날 때까지 기다려주세요.');
+      // 양식으로 작성하면 채운 항목만 "【항목】\n내용" 으로 이어붙여 본문을 만든다
+      const content = compose.template
+        ? compose.template.fields
+            .map((f, i) => {
+              const v = (compose.fieldValues[i] || '').trim();
+              return v ? `【${f.label}】\n${v}` : '';
+            })
+            .filter(Boolean)
+            .join('\n\n')
+        : compose.content;
       const body = {
         column_id: compose.columnId,
         title: compose.title,
-        content: compose.content,
+        content,
         color: compose.color,
         attachment_ids: compose.files.map((f) => f.id),
       };
-      if (!body.content.trim() && !body.attachment_ids.length) return alert('내용을 입력하거나 파일을 첨부하세요.');
+      if (!body.content.trim() && !body.attachment_ids.length)
+        return alert(compose.template ? '양식 항목을 하나 이상 채우세요.' : '내용을 입력하거나 파일을 첨부하세요.');
       const ok = await run(() => api(`/api/boards/${boardId}/posts`, { method: 'POST', body: JSON.stringify(body) }), false);
       if (ok) {
         compose = null;
@@ -487,12 +525,24 @@
     const t = e.target;
     if (t.classList.contains('compose-title')) compose.title = t.value;
     else if (t.classList.contains('compose-content')) compose.content = t.value;
+    else if (t.classList.contains('compose-field')) compose.fieldValues[Number(t.dataset.idx)] = t.value;
     else if (t.classList.contains('comment-input')) getDraft(t.dataset.postId).text = t.value;
   });
 
   $columns.addEventListener('change', (e) => {
     const t = e.target;
-    if (t.classList.contains('compose-file')) {
+    if (t.classList.contains('compose-template')) {
+      // 양식 선택/해제. 자유 작성 내용(compose.content)은 남겨 두어 되돌리면 그대로.
+      // 제목이 비어 있거나 이전 양식 이름 그대로(자동 채움)면 새 양식 이름으로 바꾸고, 해제 시 지움
+      const tpl = templatesCache.find((x) => x.id === Number(t.value)) || null;
+      if (!compose.title.trim() || (compose.template && compose.title.trim() === compose.template.name)) {
+        compose.title = tpl ? tpl.name : '';
+      }
+      compose.template = tpl;
+      compose.fieldValues = tpl ? tpl.fields.map(() => '') : [];
+      render();
+      $columns.querySelector('.compose-field, .compose-content')?.focus();
+    } else if (t.classList.contains('compose-file')) {
       addFiles(t.files, compose, 'compose');
       t.value = '';
     } else if (t.classList.contains('comment-file')) {
@@ -508,7 +558,7 @@
     const t = e.target;
     const files = filesFromClipboard(e);
     if (!files.length) return;
-    if (t.classList.contains('compose-content') || t.classList.contains('compose-title')) {
+    if (t.classList.contains('compose-content') || t.classList.contains('compose-title') || t.classList.contains('compose-field')) {
       e.preventDefault();
       addFiles(files, compose, 'compose');
     } else if (t.classList.contains('comment-input')) {
