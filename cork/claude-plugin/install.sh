@@ -8,9 +8,10 @@
 #
 # 하는 일:
 #  - <클로드 홈>/cork/ 에 저장 훅(save_turn.py)과 설정(config.json) 설치
-#  - settings.json 에 Stop 훅 등록 → 대화 한 턴(질문+답변)마다 코르크에 자동 저장
+#  - settings.json 에 Stop/SessionEnd 훅 등록 → 대화 턴(질문+답변)을 코르크에 자동 저장
+#    (저장은 `.cork` 파일이 있는 폴더에서 연 세션만 — 대화 중 /cork 시작 으로 켬)
 #  - claude mcp add 로 코르크 MCP 서버 등록(user 범위) → cork_* 도구 5개(메모 저장/검색 등)
-#  - /cork 슬래시 명령 설치 (저장 위치·주제 확인/변경)
+#  - /cork 슬래시 명령 설치 (이 폴더 저장 켜기/끄기, 저장 위치·주제 확인/변경)
 # 클로드 홈은 기본 ~/.claude, CLAUDE_CONFIG_DIR 환경변수가 있으면 그 경로.
 set -euo pipefail
 
@@ -32,7 +33,7 @@ fi
 
 HOOK_CMD="python3 \"$CLAUDE_DIR/cork/save_turn.py\""
 
-# settings.json의 hooks.Stop에서 코르크 훅을 지우고, 인자로 준 명령이 있으면 추가 (멱등)
+# settings.json의 hooks.Stop/SessionEnd에서 코르크 훅을 지우고, 인자로 준 명령이 있으면 추가 (멱등)
 edit_settings() {
   python3 - "$CLAUDE_DIR/settings.json" "$1" <<'PY'
 import json, os, sys
@@ -42,14 +43,15 @@ if os.path.exists(path):
     with open(path, encoding='utf-8') as f:
         data = json.load(f) or {}
 hooks = data.setdefault('hooks', {})
-stops = hooks.setdefault('Stop', [])
-for m in stops:
-    m['hooks'] = [h for h in m.get('hooks', []) if 'cork/save_turn.py' not in h.get('command', '')]
-stops[:] = [m for m in stops if m.get('hooks')]
-if cmd != '--remove':
-    stops.append({'hooks': [{'type': 'command', 'command': cmd, 'timeout': 30}]})
-if not stops:
-    hooks.pop('Stop', None)
+for event in ('Stop', 'SessionEnd'):
+    matchers = hooks.setdefault(event, [])
+    for m in matchers:
+        m['hooks'] = [h for h in m.get('hooks', []) if 'cork/save_turn.py' not in h.get('command', '')]
+    matchers[:] = [m for m in matchers if m.get('hooks')]
+    if cmd != '--remove':
+        matchers.append({'hooks': [{'type': 'command', 'command': cmd, 'timeout': 30}]})
+    if not matchers:
+        hooks.pop(event, None)
 if not hooks:
     data.pop('hooks', None)
 os.makedirs(os.path.dirname(path), exist_ok=True)
@@ -96,7 +98,7 @@ chmod 600 "$CLAUDE_DIR/cork/config.json"
 say "▶ /cork 명령 설치: $CLAUDE_DIR/commands/cork.md"
 curl -fsSL "$CORK_URL/claude/cork.md" -o "$CLAUDE_DIR/commands/cork.md"
 
-say "▶ settings.json: Stop 훅 등록 (대화 한 턴마다 자동 저장)"
+say "▶ settings.json: Stop/SessionEnd 훅 등록 (대화 턴 자동 저장)"
 edit_settings "$HOOK_CMD"
 
 say "▶ MCP 서버 등록: cork (user 범위, cork_* 도구 5개)"
@@ -107,5 +109,7 @@ say ""
 say "✅ 설치 완료. 현재 연동 상태:"
 cat "$tmp/me.txt"
 say ""
-say "이제 claude를 새로 실행하면 대화가 자동 저장됩니다. 대화 중 /cork 로 상태를 확인하세요."
-say "  /cork 과목 <이름>   과목 선택      /cork 주제 <문구>   단원/예제 설정      /cork off   자동 저장 끄기"
+say "저장할 프로젝트 폴더에서 claude를 새로 실행하고 /cork 시작 을 실행하세요 (폴더에 .cork 표시 파일 생성)."
+say ".cork 파일이 있는 폴더(하위 폴더 포함)에서 연 세션만 저장됩니다 — 다른 폴더의 대화는 코르크로 가지 않습니다."
+say "  /cork 시작   이 폴더 저장 켜기    /cork 중지   저장 끄기    /cork   상태 확인"
+say "  /cork 과목 <이름>   과목 선택      /cork 주제 <문구>   단원/예제 설정"

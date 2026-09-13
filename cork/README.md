@@ -15,7 +15,7 @@
 - **내 정보 페이지**(`/me`): 프로필 + **개인 Ollama 서버 연결**(주소 입력 → 연결 → 모델 선택 → 저장) + 내 AI 학습자료 목록
 - **AI 학습자료(PDF)**: 컬럼 헤더의 🤖 버튼 → 학생이 자기 Ollama 모델로 **컬럼 전체 기록(게시물+댓글)을 정리·분석한 개인화 학습자료**를 생성. 결과는 markdown으로 저장되고(`/report/:id`에서 보기) **A4 PDF로 다운로드** 가능. 수업 기록 기반 과제평가·자료 보강 용도
 - **내보내기**: 컬럼 헤더의 ⬇ 로 컬럼 전체, 보드 상단의 ⬇ 내보내기로 보드 전체를 **markdown 파일로 다운로드** (게시물·작성자·시각·첨부 파일명·댓글 포함) — 학생이 자기 AI로 꾸미고 보강하는 과제의 원본 자료
-- **AI 에이전트 연동(헤르메스 · Claude Code)**: 학생이 `/me`에서 **연동 토큰**을 발급해 설치 명령 한 줄을 자기 PC에서 실행하면, 헤르메스(Hermes Agent) 또는 **Claude Code**에서 AI와 나눈 **대화(질문+답변)가 지정 컬럼의 게시물로 자동 저장**됨(세션 하나 = 게시물 하나, 제목에 날짜·주제(단원/예제)·첫 질문, 헤더에 플랫폼·모델 표시). 두 에이전트 모두 `/cork` 명령으로 과목·컬럼·주제·자동 저장을 바꾸고, MCP 도구로 메모 저장/내 기록 검색 가능. 저장된 기록은 🤖 배지 + markdown 렌더링
+- **AI 에이전트 연동(헤르메스 · Claude Code)**: 학생이 `/me`에서 **연동 토큰**을 발급해 설치 명령 한 줄을 자기 PC에서 실행하면, 헤르메스(Hermes Agent) 또는 **Claude Code**에서 AI와 나눈 **대화(질문+답변)가 지정 컬럼의 게시물로 자동 저장**됨(세션 하나 = 게시물 하나, 제목에 날짜·주제(단원/예제)·첫 질문, 헤더에 플랫폼·모델 표시). 두 에이전트 모두 `/cork` 명령으로 과목·컬럼·주제·자동 저장을 바꾸고, MCP 도구로 메모 저장/내 기록 검색 가능(Claude Code는 `.cork` 표시 파일이 있는 프로젝트 폴더의 세션만 저장 — `/cork 시작`으로 켬). 저장된 기록은 🤖 배지 + markdown 렌더링
 - **자체 DB**: SQLite 파일 하나 (`data/cork.db`) — 외부 DB 서버 불필요
 - 5초 폴링으로 다른 학생의 게시물이 자동으로 나타남
 
@@ -34,13 +34,14 @@
 ```
 학생 PC: hermes ──(플러그인 post_llm_call 훅)──▶ POST /api/hermes/turns ┐ Authorization: Bearer <연동 토큰>
           └──(MCP 클라이언트)──────────────────▶ POST /mcp (도구 5개)     ┘ → 서버가 토큰→학생→보드/컬럼 권한 해석
-학생 PC: claude ──(Stop 훅 save_turn.py)───────▶ POST /api/hermes/turns   (같은 토큰, platform=claude-code)
+학생 PC: claude ──(Stop/SessionEnd 훅 save_turn.py)▶ POST /api/hermes/turns (같은 토큰, platform=claude-code)
           └──(MCP HTTP 클라이언트)─────────────▶ POST /mcp (같은 도구 5개)
 ```
 
 - **토큰**: `/me`에서 발급(재발급 시 이전 토큰 즉시 무효, 해시만 저장 `hermes_links`). 모델 서버 IP가 바뀌거나 한 서버를 여럿이 써도 무관
 - **설치(헤르메스)**: `/me`가 보여주는 `curl -fsSL <주소>/hermes/install.sh | CORK_TOKEN=... bash` 한 줄 — `~/.hermes/plugins/cork`(플러그인) + `~/.hermes/skills/cork`(스킬) 설치, `.env`에 `CORK_URL`/`CORK_TOKEN`, `config.yaml`에 `plugins.enabled` + `mcp_servers.cork`(헤더는 `${CORK_TOKEN}` 참조) 등록. 소스는 `hermes-plugin/`, 서버가 `/hermes/plugin.tgz`로 묶어 배포. 제거: `... | bash -s -- --uninstall`
-- **설치(Claude Code)**: `curl -fsSL <주소>/claude/install.sh | CORK_TOKEN=... bash` 한 줄 — `~/.claude/cork/`에 저장 훅(`save_turn.py`, python3)과 설정(`config.json`, 600 권한), `settings.json`에 **Stop 훅**(응답이 끝날 때마다 transcript에서 마지막 턴을 뽑아 전송, 실패해도 Claude를 막지 않음), `claude mcp add`로 MCP 서버(user 범위, `Authorization` 헤더), `~/.claude/commands/cork.md`(`/cork` 명령) 등록. `CLAUDE_CONFIG_DIR`를 쓰면 그 경로에 설치. 소스는 `claude-plugin/`. 제거: `... | bash -s -- --uninstall`. 도구 결과·메타·서브에이전트(sidechain)·`/명령` 래퍼는 저장에서 제외
+- **설치(Claude Code)**: `curl -fsSL <주소>/claude/install.sh | CORK_TOKEN=... bash` 한 줄 — `~/.claude/cork/`에 저장 훅(`save_turn.py`, python3)과 설정(`config.json`, 600 권한), `settings.json`에 **Stop/SessionEnd 훅**, `claude mcp add`로 MCP 서버(user 범위, `Authorization` 헤더), `~/.claude/commands/cork.md`(`/cork` 명령) 등록. `CLAUDE_CONFIG_DIR`를 쓰면 그 경로에 설치. 소스는 `claude-plugin/`. 제거: `... | bash -s -- --uninstall`
+- **Claude Code 저장 범위·방식**: 훅은 모든 세션에서 돌지만 **`.cork` 파일이 있는 폴더(하위 포함)에서 연 세션만 저장**(`/cork 시작`이 생성, `/cork 중지`가 삭제) — 다른 프로젝트의 대화가 코르크로 새지 않음. 트랜스크립트를 (질문, 답변) 페어로 추출해 전송하되, **Stop 시점엔 마지막 답변이 아직 파일에 안 실렸을 수 있어** 파일이 잠잠해질 때까지 최대 6초 대기하고, 그래도 없으면 세션별 전송 기록(`cork/state/`, uuid 기준 중복 방지)을 근거로 **다음 훅(다음 턴·SessionEnd)에서 만회 전송**. 서버 오류(409·5xx·네트워크)도 다음 훅에서 재시도. 설치 전부터 있던 세션은 첫 훅에서 마지막 턴부터(과거 대화 일괄 전송 방지). 도구 결과·메타·서브에이전트(sidechain)·`/명령` 래퍼·중단 알림은 저장에서 제외. 실패해도 Claude를 막지 않음(오류는 `save_turn.log`)
 - **자동 저장은 훅**(헤르메스 `post_llm_call` / Claude Code `Stop`)이 담당(모델이 도구를 부르지 않아도 100% 저장). **MCP 도구**는 학생이 의도적으로 쓰는 것만: `cork_status`, `cork_list_targets`, `cork_set_context`, `cork_save_note`, `cork_search_notes`
 - **저장 위치(컨텍스트)**: 서버가 학생별로 과목 보드·컬럼·주제·자동 저장 여부를 기억(`hermes_links`). 기본 대상은 학생이 **컬럼 관리자로 지정된 컬럼**(★). 지정 컬럼이 있는 보드가 하나뿐이면 자동 선택, 여러 과목이면 `/cork 과목 <이름>`으로 선택. 지정 컬럼이 없는 보드로는 자동 저장하지 않음(명시적으로 컬럼을 골라야 함)
 - **게시물 형식**: 제목 `[2026-08-25] 3단원 예제2 — 첫 질문 요약`, 본문은 markdown(`> 🤖 헤르메스 대화 기록 · 모델 …` 또는 `> 🤖 Claude Code 대화 기록 · 모델 …` 헤더 + `**Q1.** … **A1.** …`). 헤르메스 세션 하나 = 게시물 하나(`hermes_sessions`), 12시간 이상 쉬거나 `/cork 새글`이면 새 게시물, 본문 20,000자를 넘으면 `(2)` 게시물로 이어씀. 2자 이하 질문과 `/`로 시작하는 명령은 저장하지 않음
