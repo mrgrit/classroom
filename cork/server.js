@@ -130,17 +130,23 @@ app.post('/api/boards', requireAdmin, (req, res) => {
   res.status(201).json({ id: create() });
 });
 
-// 보드 설정 변경 (관리자): {theme} 배경 테마
+// 보드 설정 변경 (관리자): {title, description, theme} 중 주어진 것만 변경
 app.put('/api/boards/:id', requireAdmin, (req, res) => {
   const board = db.prepare('SELECT * FROM boards WHERE id = ?').get(req.params.id);
   if (!board) return res.status(404).json({ error: '보드가 없습니다.' });
-  let { theme } = board;
+  let { title, description, theme } = board;
+  if (req.body.title !== undefined) {
+    title = String(req.body.title).trim();
+    if (!title) return res.status(400).json({ error: '보드 제목을 입력하세요.' });
+    if (title.length > 100) return res.status(400).json({ error: '보드 제목은 100자 이하여야 합니다.' });
+  }
+  if (req.body.description !== undefined) description = String(req.body.description).trim();
   if (req.body.theme !== undefined) {
     theme = String(req.body.theme || '');
     if (!themes.isValidTheme(theme)) return res.status(400).json({ error: '배경 테마가 올바르지 않습니다.' });
   }
-  db.prepare('UPDATE boards SET theme = ? WHERE id = ?').run(theme, board.id);
-  res.json({ ok: true, theme });
+  db.prepare('UPDATE boards SET title = ?, description = ?, theme = ? WHERE id = ?').run(title, description, theme, board.id);
+  res.json({ ok: true, title, description, theme });
 });
 
 app.delete('/api/boards/:id', requireAdmin, (req, res) => {

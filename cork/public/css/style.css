@@ -619,3 +619,7 @@ body.themed .login-card { color: var(--text); }
 .tpl-editor .tpl-f-add { margin-top: 8px; }
 .tpl-editor .modal-actions { margin-top: 12px; }
 .tpl-status:empty { display: none; }
+
+/* 보드 이름/설명 수정 모달의 라벨 */
+.modal-label { display: flex; flex-direction: column; gap: 4px; font-size: 13px; font-weight: 600; color: var(--text-dim); }
+.modal-label input { font-weight: 400; }

@@ -144,7 +144,7 @@ POST   /api/auth/logout             로그아웃
 GET    /api/me                      내 정보
 GET    /api/boards                  보드 목록
 POST   /api/boards                  보드 생성 {title, description, columns, theme} (관리자, theme 생략 시 덜 쓰인 테마 자동 배정)
-PUT    /api/boards/:id              보드 설정 변경 {theme} (관리자)
+PUT    /api/boards/:id              보드 설정 변경 {title, description, theme} 중 주어진 것만 (관리자)
 DELETE /api/boards/:id              보드 삭제 (관리자)
 GET    /api/boards/:id              보드 상세 (컬럼별 게시물+첨부+좋아요+댓글, 컬럼 managers/can_post, 게시물 can_edit)
 POST   /api/boards/:id/columns      컬럼 추가 (관리자)

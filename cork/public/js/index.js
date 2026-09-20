@@ -52,6 +52,7 @@
         </div>
         ${Auth.me.admin ? `
         <span class="card-btns">
+          <button class="btn btn-small board-rename" data-id="${b.id}" title="이름/설명 수정">✏️</button>
           <button class="btn btn-small board-theme" data-id="${b.id}" title="배경 바꾸기">🎨</button>
           <button class="btn btn-small board-members" data-id="${b.id}" title="접근권한 (지정 학생만 보기)">👥</button>
           <button class="btn btn-small btn-danger board-delete" data-id="${b.id}">삭제</button>
@@ -77,6 +78,14 @@
         if (b) openMembersModal(b);
       });
     });
+    list.querySelectorAll('.board-rename').forEach((btn) => {
+      btn.addEventListener('click', (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        const b = boardsCache.find((x) => x.id === Number(btn.dataset.id));
+        if (b) openRenameModal(b);
+      });
+    });
     list.querySelectorAll('.board-theme').forEach((btn) => {
       btn.addEventListener('click', (e) => {
         e.preventDefault();
@@ -96,6 +105,48 @@
       });
     });
     if (Auth.me.admin) resetThemePicker();
+  }
+
+  // 보드 이름/설명 수정
+  function openRenameModal(b) {
+    const modal = document.createElement('div');
+    modal.className = 'modal-bg';
+    modal.innerHTML = `
+      <div class="modal">
+        <h3>보드 이름/설명 수정</h3>
+        <label class="modal-label">이름
+          <input type="text" class="rn-title" maxlength="100" value="${escapeHtml(b.title)}">
+        </label>
+        <label class="modal-label">설명 (비워도 됨)
+          <input type="text" class="rn-desc" maxlength="200" value="${escapeHtml(b.description || '')}">
+        </label>
+        <div class="modal-actions">
+          <span class="spacer"></span>
+          <button type="button" class="btn rn-cancel">취소</button>
+          <button type="button" class="btn btn-primary rn-save">저장</button>
+        </div>
+      </div>`;
+    document.body.appendChild(modal);
+    const close = () => modal.remove();
+    modal.querySelector('.rn-cancel').addEventListener('click', close);
+    modal.addEventListener('click', (e) => { if (e.target === modal) close(); });
+    const save = async () => {
+      const title = modal.querySelector('.rn-title').value.trim();
+      const description = modal.querySelector('.rn-desc').value.trim();
+      if (!title) return alert('보드 제목을 입력하세요.');
+      try {
+        await api(`/api/boards/${b.id}`, { method: 'PUT', body: JSON.stringify({ title, description }) });
+        close();
+        loadBoards();
+      } catch (err) {
+        alert(err.message);
+      }
+    };
+    modal.querySelector('.rn-save').addEventListener('click', save);
+    modal.querySelectorAll('input').forEach((el) => el.addEventListener('keydown', (e) => { if (e.key === 'Enter') save(); }));
+    const $t = modal.querySelector('.rn-title');
+    $t.focus();
+    $t.select();
   }
 
   // 보드 접근권한(멤버) 지정: 로그인한 적 있는 사용자 체크 + 이메일 직접 추가. 비우면 전체 공개
