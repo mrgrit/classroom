@@ -78,7 +78,65 @@
       const posts = $columns.querySelector(`.column[data-col="${id}"] .column-posts`);
       if (posts) posts.scrollTop = top;
     }
+    applyColWidths();
   }
+
+  // ---------- 컬럼 너비 조절 (이 브라우저에서만 유지 — localStorage) ----------
+  const COLW_KEY = `cork-colw-${boardId}`;
+  const COLW_MIN = 220;
+  const COLW_MAX = 680;
+  function loadColWidths() {
+    try { return JSON.parse(localStorage.getItem(COLW_KEY)) || {}; } catch { return {}; }
+  }
+  function saveColWidths(map) {
+    try { localStorage.setItem(COLW_KEY, JSON.stringify(map)); } catch { /* 시크릿 모드 등 — 이번 화면에서만 유지 */ }
+  }
+  function setColWidth(el, w) {
+    el.style.flex = `0 0 ${w}px`;
+    el.style.width = `${w}px`;
+  }
+  function applyColWidths() {
+    // 한 컬럼짜리 보드(가로 전체 배치)와 모바일(85vw 스냅)에서는 적용하지 않음
+    if (state.columns.length <= 1 || window.matchMedia('(max-width: 600px)').matches) return;
+    const map = loadColWidths();
+    for (const el of $columns.querySelectorAll('.column')) {
+      const w = Number(map[el.dataset.col]);
+      if (w) setColWidth(el, Math.min(COLW_MAX, Math.max(COLW_MIN, w)));
+    }
+  }
+  $columns.addEventListener('pointerdown', (e) => {
+    const handle = e.target.closest('.col-resize');
+    if (!handle) return;
+    e.preventDefault();
+    const colEl = handle.closest('.column');
+    const startX = e.clientX;
+    const startW = colEl.getBoundingClientRect().width;
+    handle.setPointerCapture(e.pointerId);
+    colEl.classList.add('resizing');
+    const move = (ev) => {
+      setColWidth(colEl, Math.round(Math.min(COLW_MAX, Math.max(COLW_MIN, startW + ev.clientX - startX))));
+    };
+    const up = () => {
+      handle.removeEventListener('pointermove', move);
+      colEl.classList.remove('resizing');
+      const map = loadColWidths();
+      map[colEl.dataset.col] = Math.round(colEl.getBoundingClientRect().width);
+      saveColWidths(map);
+    };
+    handle.addEventListener('pointermove', move);
+    handle.addEventListener('pointerup', up, { once: true });
+    handle.addEventListener('pointercancel', up, { once: true });
+  });
+  $columns.addEventListener('dblclick', (e) => {
+    const handle = e.target.closest('.col-resize');
+    if (!handle) return;
+    const colEl = handle.closest('.column');
+    const map = loadColWidths();
+    delete map[colEl.dataset.col];
+    saveColWidths(map);
+    colEl.style.flex = '';
+    colEl.style.width = '';
+  });
 
   function columnHtml(col, index, total) {
     const { me } = state;
@@ -115,6 +173,7 @@
         ${col.posts.map((p) => postCard(p)).join('')}
         ${col.posts.length === 0 && !isComposing(col.id) ? '<p class="col-empty">아직 게시물이 없습니다.</p>' : ''}
       </div>
+      ${total > 1 ? '<span class="col-resize" title="드래그: 컬럼 너비 조절 (나에게만) · 더블클릭: 원래 너비"></span>' : ''}
     </section>`;
   }
 

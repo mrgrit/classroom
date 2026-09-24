@@ -623,3 +623,30 @@ body.themed .login-card { color: var(--text); }
 /* 보드 이름/설명 수정 모달의 라벨 */
 .modal-label { display: flex; flex-direction: column; gap: 4px; font-size: 13px; font-weight: 600; color: var(--text-dim); }
 .modal-label input { font-weight: 400; }
+
+/* 컬럼 너비 조절 손잡이 (오른쪽 가장자리 드래그, 나에게만 저장) */
+.column { position: relative; }
+.col-resize {
+  position: absolute;
+  top: 0;
+  right: -9px;
+  width: 14px;
+  height: 100%;
+  cursor: col-resize;
+  touch-action: none;
+  z-index: 5;
+}
+.col-resize::after {
+  content: '';
+  position: absolute;
+  top: 8px;
+  bottom: 8px;
+  left: 5px;
+  width: 4px;
+  border-radius: 2px;
+  background: transparent;
+  transition: background 0.15s;
+}
+.col-resize:hover::after, .column.resizing .col-resize::after { background: rgba(0, 0, 0, 0.28); }
+.column.resizing { user-select: none; }
+@media (max-width: 600px) { .col-resize { display: none; } }
